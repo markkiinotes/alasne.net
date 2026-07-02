@@ -1,0 +1,27 @@
+# Environment
+.env
+
+# Composer
+/vendor/
+
+# Logs and cache
+/storage/logs/*
+/storage/cache/*
+
+# Keep folders
+!/storage/logs/.gitkeep
+!/storage/cache/.gitkeep
+
+# Backups
+/database/backups/*
+!/database/backups/.gitkeep
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# XAMPP/local
+*.log
+*.tmp

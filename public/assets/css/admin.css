@@ -1,0 +1,47 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    color: #1f2937;
+    display: flex;
+    min-height: 100vh;
+}
+
+aside {
+    width: 240px;
+    background: #111827;
+    color: #ffffff;
+    padding: 20px;
+}
+
+aside h2 {
+    margin-top: 0;
+}
+
+aside nav a {
+    color: #ffffff;
+    display: block;
+    padding: 10px 0;
+    text-decoration: none;
+}
+
+main {
+    flex: 1;
+    padding: 30px;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.card {
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+}
