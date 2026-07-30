@@ -10,6 +10,7 @@ use App\Repositories\CustomerRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\PaymentTransactionRepository;
 use App\Repositories\ProductRepository;
+use App\Repositories\ReturnRepository;
 use App\Repositories\StoreRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Mail\EmailOutboxSender;
@@ -23,6 +24,7 @@ class OrderController extends Controller
         private CustomerRepository $customers,
         private ProductRepository $products,
         private StoreRepository $stores,
+        private ReturnRepository $returns,
         private PaymentTransactionRepository $paymentTransactions,
         private PaymentService $payments,
         private OrderNotificationService $notifications,
@@ -369,6 +371,8 @@ class OrderController extends Controller
             'events' => $this->orders->eventsForOrder($id),
             'shippingAddress' =>
                 $this->shippingAddressForOrder($id),
+            'orderReturns' =>
+                $this->returns->forOrder($id),
             'paymentTransactions' => $transactions,
             'latestSuccessfulCharge' =>
                 $latestCharge,

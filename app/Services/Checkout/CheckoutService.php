@@ -337,8 +337,7 @@ class CheckoutService
 
                 $this->markOrderPaid(
                     $orderId,
-                    $paymentTransactionId,
-                    $grandTotal
+                    $paymentTransactionId
                 );
 
                 /*
@@ -1294,41 +1293,115 @@ class CheckoutService
 
     private function markOrderPaid(
         int $orderId,
-        int $paymentTransactionId,
-        float $amount
+        int $paymentTransactionId
     ): void {
+        /*
+         * payment_transactions is the immutable source of
+         * truth for the captured amount. Copy its values to
+         * the order in one guarded UPDATE.
+         */
         $stmt = $this->db->prepare("
-            UPDATE orders
+            UPDATE orders AS o
+            INNER JOIN payment_transactions AS pt
+                ON pt.id = :payment_transaction_id
+                AND pt.order_id = o.id
+                AND pt.type = 'charge'
+                AND pt.status = 'succeeded'
             SET
-                status = 'paid',
-                payment_status = 'paid',
-                payment_transaction_id =
-                    :payment_transaction_id,
-                amount_paid = :amount_paid,
-                amount_refunded = 0.00,
-                paid_at = NOW(),
-                payment_failed_at = NULL,
-                updated_at = NOW()
-            WHERE id = :id
+                o.status = 'paid',
+                o.payment_status = 'paid',
+                o.payment_method_id =
+                    pt.payment_method_id,
+                o.payment_method_name =
+                    pt.payment_method_name,
+                o.payment_method_code =
+                    pt.payment_method_code,
+                o.payment_provider =
+                    pt.provider,
+                o.payment_transaction_id =
+                    pt.id,
+                o.currency = pt.currency,
+                o.amount_paid = pt.amount,
+                o.amount_refunded =
+                    LEAST(
+                        o.amount_refunded,
+                        pt.amount
+                    ),
+                o.paid_at =
+                    COALESCE(
+                        o.paid_at,
+                        pt.processed_at,
+                        NOW()
+                    ),
+                o.payment_failed_at = NULL,
+                o.updated_at = NOW()
+            WHERE o.id = :order_id
         ");
 
         $stmt->execute([
-            'id' => $orderId,
+            'order_id' => $orderId,
             'payment_transaction_id' =>
                 $paymentTransactionId,
-            'amount_paid' => number_format(
-                $amount,
-                2,
-                '.',
-                ''
-            ),
         ]);
+
+        $verify = $this->db->prepare("
+            SELECT
+                o.payment_status,
+                o.payment_transaction_id,
+                o.amount_paid,
+                pt.amount AS transaction_amount
+            FROM orders o
+            INNER JOIN payment_transactions pt
+                ON pt.id = :payment_transaction_id
+                AND pt.order_id = o.id
+            WHERE o.id = :order_id
+            LIMIT 1
+        ");
+
+        $verify->execute([
+            'order_id' => $orderId,
+            'payment_transaction_id' =>
+                $paymentTransactionId,
+        ]);
+
+        $paymentState = $verify->fetch();
+
+        if (
+            ! $paymentState
+            || (
+                $paymentState['payment_status']
+                ?? ''
+            ) !== 'paid'
+            || (int) (
+                $paymentState[
+                    'payment_transaction_id'
+                ] ?? 0
+            ) !== $paymentTransactionId
+            || round(
+                (float) (
+                    $paymentState['amount_paid']
+                    ?? -1
+                ),
+                2
+            ) !== round(
+                (float) (
+                    $paymentState[
+                        'transaction_amount'
+                    ] ?? -2
+                ),
+                2
+            )
+        ) {
+            throw new RuntimeException(
+                'Payment was approved, but the order payment totals could not be synchronized.'
+            );
+        }
 
         $this->recordOrderEvent(
             $orderId,
             'payment_succeeded',
             'Payment received',
-            'The payment was approved and the order is ready for processing.',
+            'The payment was approved and the order payment totals were synchronized from the successful charge.',
             'processing',
             'paid',
             true

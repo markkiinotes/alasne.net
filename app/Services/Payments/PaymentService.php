@@ -541,58 +541,110 @@ class PaymentService
         int $transactionId,
         float $amount
     ): void {
+        /*
+         * The successful transaction is the source of truth.
+         * The $amount argument remains for backward-compatible
+         * method calls, but order totals are copied from the
+         * transaction row itself.
+         */
         $stmt = $this->db->prepare("
-            UPDATE orders
+            UPDATE orders AS o
+            INNER JOIN payment_transactions AS pt
+                ON pt.id = :payment_transaction_id
+                AND pt.order_id = o.id
+                AND pt.type = 'charge'
+                AND pt.status = 'succeeded'
             SET
-                payment_status = 'paid',
-                payment_method_id =
-                    :payment_method_id,
-                payment_method_name =
-                    :payment_method_name,
-                payment_method_code =
-                    :payment_method_code,
-                payment_provider =
-                    :payment_provider,
-                payment_transaction_id =
-                    :payment_transaction_id,
-                currency = :currency,
-                amount_paid = :amount_paid,
-                paid_at = NOW(),
-                payment_failed_at = NULL,
-                status = CASE
-                    WHEN status = 'pending'
+                o.payment_status = 'paid',
+                o.payment_method_id =
+                    pt.payment_method_id,
+                o.payment_method_name =
+                    pt.payment_method_name,
+                o.payment_method_code =
+                    pt.payment_method_code,
+                o.payment_provider =
+                    pt.provider,
+                o.payment_transaction_id =
+                    pt.id,
+                o.currency = pt.currency,
+                o.amount_paid = pt.amount,
+                o.paid_at =
+                    COALESCE(
+                        o.paid_at,
+                        pt.processed_at,
+                        NOW()
+                    ),
+                o.payment_failed_at = NULL,
+                o.status = CASE
+                    WHEN o.status IN (
+                        'pending',
+                        'processing'
+                    )
                     THEN 'paid'
-                    ELSE status
+                    ELSE o.status
                 END,
-                updated_at = NOW()
-            WHERE id = :id
+                o.updated_at = NOW()
+            WHERE o.id = :order_id
         ");
 
         $stmt->execute([
-            'id' => (int) $order['id'],
-            'payment_method_id' =>
-                (int) $paymentMethod['id'],
-            'payment_method_name' =>
-                $paymentMethod['name'],
-            'payment_method_code' =>
-                $paymentMethod['code'],
-            'payment_provider' =>
-                $paymentMethod['provider'],
+            'order_id' => (int) $order['id'],
             'payment_transaction_id' =>
                 $transactionId,
-            'currency' =>
-                strtoupper(
-                    (string) (
-                        $order['currency'] ?? 'USD'
-                    )
-                ),
-            'amount_paid' => number_format(
-                $amount,
-                2,
-                '.',
-                ''
-            ),
         ]);
+
+        $verify = $this->db->prepare("
+            SELECT
+                o.payment_status,
+                o.payment_transaction_id,
+                o.amount_paid,
+                pt.amount AS transaction_amount
+            FROM orders o
+            INNER JOIN payment_transactions pt
+                ON pt.id = :payment_transaction_id
+                AND pt.order_id = o.id
+            WHERE o.id = :order_id
+            LIMIT 1
+        ");
+
+        $verify->execute([
+            'order_id' => (int) $order['id'],
+            'payment_transaction_id' =>
+                $transactionId,
+        ]);
+
+        $paymentState = $verify->fetch();
+
+        if (
+            ! $paymentState
+            || (
+                $paymentState['payment_status']
+                ?? ''
+            ) !== 'paid'
+            || (int) (
+                $paymentState[
+                    'payment_transaction_id'
+                ] ?? 0
+            ) !== $transactionId
+            || round(
+                (float) (
+                    $paymentState['amount_paid']
+                    ?? -1
+                ),
+                2
+            ) !== round(
+                (float) (
+                    $paymentState[
+                        'transaction_amount'
+                    ] ?? -2
+                ),
+                2
+            )
+        ) {
+            throw new RuntimeException(
+                'Payment was approved, but the order payment totals could not be synchronized.'
+            );
+        }
 
         $this->recordOrderEvent(
             (int) $order['id'],
@@ -600,7 +652,7 @@ class PaymentService
             'Payment received',
             'Payment was approved using '
             . $paymentMethod['name']
-            . '.',
+            . ' and synchronized from the successful charge.',
             $order['payment_status']
                 ?? 'unpaid',
             'paid',

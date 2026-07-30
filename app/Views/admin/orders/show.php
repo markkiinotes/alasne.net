@@ -23,6 +23,7 @@ $label = static function (mixed $value): string {
 $shippingAddress = $shippingAddress ?? null;
 $paymentTransactions =
     $paymentTransactions ?? [];
+$orderReturns = $orderReturns ?? [];
 $latestSuccessfulCharge =
     $latestSuccessfulCharge ?? null;
 $remainingRefundable = round(
@@ -59,9 +60,30 @@ $currency = strtoupper(
     )
 );
 
-$amountPaid = round(
+/*
+ * The order repository used by older installations may not
+ * include the newer payment columns in its SELECT statement.
+ *
+ * The successful charge is an immutable payment record, so it
+ * is a safe display fallback when the order row's amount_paid
+ * value is missing from the repository result.
+ */
+$orderAmountPaid = round(
     (float) ($order['amount_paid'] ?? 0),
     2
+);
+
+$successfulChargeAmount = round(
+    (float) (
+        $latestSuccessfulCharge['amount']
+        ?? 0
+    ),
+    2
+);
+
+$amountPaid = max(
+    $orderAmountPaid,
+    $successfulChargeAmount
 );
 
 $amountRefunded = round(
@@ -358,6 +380,27 @@ $statusClass = static function (
             target="_blank"
         >
             Print Invoice
+        </a>
+
+        <?php if (
+            $amountPaid > 0
+            && ($order['status'] ?? '') !== 'cancelled'
+        ): ?>
+            <a
+                href="/admin/orders/<?= $escape(
+                    $order['id']
+                ) ?>/returns/create"
+                class="button-primary"
+            >
+                Create Return
+            </a>
+        <?php endif; ?>
+
+        <a
+            href="/admin/returns"
+            class="button-muted"
+        >
+            All Returns
         </a>
 
         <a
@@ -734,6 +777,116 @@ $statusClass = static function (
             available for this order.
         </p>
     <?php endif; ?>
+</section>
+
+<br>
+
+
+<section class="panel">
+    <div class="table-header">
+        <h2>Returns</h2>
+
+        <?php if (
+            $amountPaid > 0
+            && ($order['status'] ?? '') !== 'cancelled'
+        ): ?>
+            <a
+                href="/admin/orders/<?= $escape(
+                    $order['id']
+                ) ?>/returns/create"
+                class="button-primary"
+            >
+                Create Return
+            </a>
+        <?php endif; ?>
+    </div>
+
+    <div class="payment-transaction-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Return</th>
+                    <th>Status</th>
+                    <th>Requested</th>
+                    <th>Approved</th>
+                    <th>Refund</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+
+            <tbody>
+                <?php foreach ($orderReturns as $orderReturn): ?>
+                    <tr>
+                        <td>
+                            <strong>
+                                <?= $escape(
+                                    $orderReturn['return_number']
+                                ) ?>
+                            </strong>
+                        </td>
+
+                        <td>
+                            <?= $escape(
+                                $label($orderReturn['status'])
+                            ) ?>
+                        </td>
+
+                        <td>
+                            $<?= number_format(
+                                (float) $orderReturn[
+                                    'requested_refund_amount'
+                                ],
+                                2
+                            ) ?>
+                        </td>
+
+                        <td>
+                            $<?= number_format(
+                                (float) $orderReturn[
+                                    'approved_refund_amount'
+                                ],
+                                2
+                            ) ?>
+                        </td>
+
+                        <td>
+                            <?= $escape(
+                                $label(
+                                    $orderReturn['refund_status']
+                                )
+                            ) ?>
+                        </td>
+
+                        <td>
+                            <?= $escape(
+                                $orderReturn['created_at']
+                            ) ?>
+                        </td>
+
+                        <td>
+                            <a
+                                href="/admin/returns/<?= $escape(
+                                    $orderReturn['id']
+                                ) ?>"
+                                class="button-muted"
+                            >
+                                View
+                            </a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+
+                <?php if (empty($orderReturns)): ?>
+                    <tr>
+                        <td colspan="7">
+                            No returns are recorded for this order.
+                        </td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <br>

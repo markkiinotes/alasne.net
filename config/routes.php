@@ -9,6 +9,7 @@ use App\Controllers\Admin\EmailOutboxController;
 use App\Controllers\Admin\InventoryController;
 use App\Controllers\Admin\OrderController;
 use App\Controllers\Admin\PaymentMethodController;
+use App\Controllers\Admin\ReturnController;
 use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
 use App\Controllers\Admin\RoleController;
@@ -342,6 +343,65 @@ $router
     ->get('/admin/customers/{id}', [CustomerController::class, 'show'])
     ->middleware('auth')
     ->middleware('permission:customers.manage');
+
+
+$router
+    ->get('/admin/returns', [ReturnController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/orders/{order_id}/returns/create',
+        [ReturnController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{order_id}/returns',
+        [ReturnController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get('/admin/returns/{id}', [ReturnController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/approve',
+        [ReturnController::class, 'approve']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/receive',
+        [ReturnController::class, 'receive']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/complete',
+        [ReturnController::class, 'complete']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/cancel',
+        [ReturnController::class, 'cancel']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
 
 $router
     ->get('/admin/orders', [OrderController::class, 'index'])
