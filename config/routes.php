@@ -388,6 +388,30 @@ $router
     ->middleware('permission:orders.manage');
 
 $router
+    ->post(
+        '/admin/returns/{id}/shipping',
+        [ReturnController::class, 'saveShipping']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/shipping/status',
+        [ReturnController::class, 'updateShippingStatus']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/returns/{id}/shipping-label',
+        [ReturnController::class, 'shippingLabel']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
     ->get(
         '/admin/returns/{id}/authorization',
         [ReturnController::class, 'authorization']
@@ -634,6 +658,11 @@ $router->post(
 $router->get(
     '/store/{store_slug}/returns/request/success/{token}',
     [CustomerReturnController::class, 'success']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/shipping-label',
+    [ReturnTrackingController::class, 'shippingLabel']
 );
 
 $router->post(

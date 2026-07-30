@@ -7,17 +7,23 @@ namespace App\Controllers\Admin;
 use App\Core\Controller;
 use App\Core\Request;
 use App\Repositories\ReturnRepository;
+use App\Repositories\ReturnShippingRepository;
 use App\Repositories\StoreRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Mail\EmailOutboxSender;
 use App\Services\Returns\ReturnNotificationService;
 use App\Services\Returns\ReturnService;
+use App\Services\Returns\ReturnShippingNotificationService;
+use App\Services\Returns\ReturnShippingService;
 
 class ReturnController extends Controller
 {
     public function __construct(
         private ReturnRepository $returns,
         private ReturnService $returnService,
+        private ReturnShippingService $returnShippingService,
+        private ReturnShippingRepository $returnShipments,
+        private ReturnShippingNotificationService $shippingNotifications,
         private ReturnNotificationService $notifications,
         private EmailOutboxSender $emailSender,
         private StoreRepository $stores,
@@ -42,6 +48,11 @@ class ReturnController extends Controller
             'request_source' => trim(
                 (string) $this->request->input(
                     'request_source'
+                )
+            ),
+            'shipment_status' => trim(
+                (string) $this->request->input(
+                    'shipment_status'
                 )
             ),
         ];
@@ -76,6 +87,13 @@ class ReturnController extends Controller
                 'sources' => [
                     'admin',
                     'customer',
+                ],
+                'shipmentStatuses' => [
+                    'label_ready',
+                    'in_transit',
+                    'delivered',
+                    'exception',
+                    'cancelled',
                 ],
                 'success' => $success,
                 'error' => $error,
@@ -255,6 +273,17 @@ class ReturnController extends Controller
                     $this->returns->items($returnId),
                 'events' =>
                     $this->returns->events($returnId),
+                'shipment' =>
+                    $this->returnShipments
+                        ->findByReturn($returnId),
+                'shipmentEvents' => (
+                    $shipment = $this->returnShipments
+                        ->findByReturn($returnId)
+                )
+                    ? $this->returnShipments->events(
+                        (int) $shipment['id']
+                    )
+                    : [],
                 'csrf_token' =>
                     $this->csrf->token(),
                 'success' => $success,
@@ -264,6 +293,167 @@ class ReturnController extends Controller
         );
     }
 
+
+
+    public function saveShipping(Request $request)
+    {
+        $returnId = (int) $request->route('id');
+
+        if (! $this->validateCsrf()) {
+            $this->redirectWithError(
+                $returnId,
+                'Security token expired. Please try again.'
+            );
+
+            return;
+        }
+
+        try {
+            $result = $this->returnShippingService
+                ->configure(
+                    $returnId,
+                    [
+                        'carrier_code' =>
+                            $this->request->input(
+                                'carrier_code'
+                            ),
+                        'carrier_name' =>
+                            $this->request->input(
+                                'carrier_name'
+                            ),
+                        'service_name' =>
+                            $this->request->input(
+                                'service_name'
+                            ),
+                        'tracking_number' =>
+                            $this->request->input(
+                                'tracking_number'
+                            ),
+                        'tracking_url' =>
+                            $this->request->input(
+                                'tracking_url'
+                            ),
+                        'label_cost' =>
+                            $this->request->input(
+                                'label_cost',
+                                0
+                            ),
+                        'currency' =>
+                            $this->request->input(
+                                'currency',
+                                'USD'
+                            ),
+                        'public_note' =>
+                            $this->request->input(
+                                'public_note'
+                            ),
+                    ]
+                );
+
+            $this->csrf->regenerate();
+
+            $_SESSION['returns_success'] =
+                'Return shipping details saved.';
+
+            $this->queueShippingNotification(
+                $returnId,
+                $result['notification_event']
+                    ?? null
+            );
+        } catch (\Throwable $exception) {
+            $_SESSION['returns_error'] =
+                $exception->getMessage()
+                ?: 'Unable to save return shipping details.';
+        }
+
+        $this->response->redirect(
+            '/admin/returns/' . $returnId
+        );
+    }
+
+    public function updateShippingStatus(
+        Request $request
+    ) {
+        $returnId = (int) $request->route('id');
+
+        if (! $this->validateCsrf()) {
+            $this->redirectWithError(
+                $returnId,
+                'Security token expired. Please try again.'
+            );
+
+            return;
+        }
+
+        try {
+            $result = $this->returnShippingService
+                ->updateStatus(
+                    $returnId,
+                    (string) $this->request->input(
+                        'status'
+                    ),
+                    trim(
+                        (string) $this->request->input(
+                            'description'
+                        )
+                    ) ?: null,
+                    trim(
+                        (string) $this->request->input(
+                            'location'
+                        )
+                    ) ?: null,
+                    trim(
+                        (string) $this->request->input(
+                            'event_at'
+                        )
+                    ) ?: null
+                );
+
+            $this->csrf->regenerate();
+
+            $_SESSION['returns_success'] =
+                'Return shipment status updated.';
+
+            $this->queueShippingNotification(
+                $returnId,
+                $result['notification_event']
+                    ?? null
+            );
+        } catch (\Throwable $exception) {
+            $_SESSION['returns_error'] =
+                $exception->getMessage()
+                ?: 'Unable to update return shipment status.';
+        }
+
+        $this->response->redirect(
+            '/admin/returns/' . $returnId
+        );
+    }
+
+    public function shippingLabel(Request $request)
+    {
+        $returnId = (int) $request->route('id');
+        $return = $this->returns->find($returnId);
+        $shipment = $this->returnShipments
+            ->findByReturn($returnId);
+
+        if (! $return || ! $shipment) {
+            http_response_code(404);
+
+            return '404 - Return shipping label not found';
+        }
+
+        return $this->view(
+            'admin.returns.shipping-label',
+            [
+                'title' =>
+                    'Return Shipping Label '
+                    . $return['rma_number'],
+                'return' => $return,
+                'shipment' => $shipment,
+            ]
+        );
+    }
 
     public function authorization(Request $request)
     {
@@ -556,6 +746,35 @@ class ReturnController extends Controller
         );
     }
 
+
+
+    private function queueShippingNotification(
+        int $returnId,
+        ?string $event
+    ): void {
+        if ($event === null || $event === '') {
+            return;
+        }
+
+        try {
+            $outboxId =
+                $this->shippingNotifications
+                    ->queueForEvent(
+                        $returnId,
+                        $event
+                    );
+
+            if ($outboxId !== null) {
+                $this->emailSender->sendOne(
+                    $outboxId
+                );
+            }
+        } catch (\Throwable $exception) {
+            $_SESSION['returns_error'] =
+                'The shipment was updated, but its customer notification could not be queued: '
+                . $exception->getMessage();
+        }
+    }
 
     private function queueNotification(
         int $returnId,

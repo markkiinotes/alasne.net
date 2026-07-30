@@ -31,7 +31,10 @@ class ReturnRepository
                     ' ',
                     c.last_name
                 ) AS customer_name,
-                c.email AS customer_email
+                c.email AS customer_email,
+                rs.status AS shipment_status,
+                rs.carrier_name AS return_carrier_name,
+                rs.tracking_number AS return_tracking_number
             FROM returns r
             INNER JOIN orders o
                 ON o.id = r.order_id
@@ -39,6 +42,8 @@ class ReturnRepository
                 ON s.id = r.store_id
             LEFT JOIN customers c
                 ON c.id = o.customer_id
+            LEFT JOIN return_shipments rs
+                ON rs.return_id = r.id
             WHERE 1 = 1
         ";
 
@@ -54,6 +59,7 @@ class ReturnRepository
                     r.return_number LIKE :query_return
                     OR r.rma_number LIKE :query_rma
                     OR o.order_number LIKE :query_order
+                    OR rs.tracking_number LIKE :query_tracking
                     OR c.email LIKE :query_email
                     OR CONCAT(
                         c.first_name,
@@ -68,6 +74,7 @@ class ReturnRepository
             $parameters['query_return'] = $likeQuery;
             $parameters['query_rma'] = $likeQuery;
             $parameters['query_order'] = $likeQuery;
+            $parameters['query_tracking'] = $likeQuery;
             $parameters['query_email'] = $likeQuery;
             $parameters['query_customer'] = $likeQuery;
         }
@@ -79,6 +86,18 @@ class ReturnRepository
         if ($status !== '') {
             $sql .= ' AND r.status = :status';
             $parameters['status'] = $status;
+        }
+
+        $shipmentStatus = trim(
+            (string) (
+                $filters['shipment_status'] ?? ''
+            )
+        );
+
+        if ($shipmentStatus !== '') {
+            $sql .= ' AND rs.status = :shipment_status';
+            $parameters['shipment_status'] =
+                $shipmentStatus;
         }
 
         $requestSource = trim(
@@ -136,7 +155,13 @@ class ReturnRepository
                     c.last_name
                 ) AS customer_name,
                 c.email AS customer_email,
-                c.phone AS customer_phone
+                c.phone AS customer_phone,
+                c.address_line_1 AS customer_address_line_1,
+                c.address_line_2 AS customer_address_line_2,
+                c.city AS customer_city,
+                c.state AS customer_state,
+                c.postal_code AS customer_postal_code,
+                c.country AS customer_country
             FROM returns r
             INNER JOIN orders o
                 ON o.id = r.order_id
@@ -500,6 +525,40 @@ class ReturnRepository
         return (int) $this->db->lastInsertId();
     }
 
+
+
+    public function fillMissingAuthorizationAddress(
+        int $returnId,
+        string $returnAddress
+    ): bool {
+        $returnAddress = trim($returnAddress);
+
+        if ($returnAddress === '') {
+            return false;
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE returns
+            SET
+                return_address_snapshot =
+                    :return_address,
+                updated_at = NOW()
+            WHERE id = :id
+            AND (
+                return_address_snapshot IS NULL
+                OR TRIM(
+                    return_address_snapshot
+                ) = ''
+            )
+        ");
+
+        $stmt->execute([
+            'id' => $returnId,
+            'return_address' => $returnAddress,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
 
     public function issueAuthorization(
         int $returnId,
@@ -1129,6 +1188,11 @@ class ReturnRepository
             'return_cancelled',
             'refund_succeeded',
             'refund_failed',
+            'shipment_label_ready',
+            'shipment_in_transit',
+            'shipment_delivered',
+            'shipment_exception',
+            'shipment_cancelled',
         ];
 
         $placeholders = implode(

@@ -7,6 +7,8 @@ $escape = static fn (mixed $value): string =>
 $label = static fn (mixed $value): string =>
     ucwords(str_replace('_', ' ', (string)$value));
 $status = (string)$return['status'];
+$shipment = $shipment ?? null;
+$shipmentEvents = $shipmentEvents ?? [];
 $currency = strtoupper((string)($return['currency'] ?? 'USD'));
 ?>
 
@@ -28,7 +30,11 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
 .return-timeline { display:grid; gap:16px; }
 .return-event { border-left:3px solid #2563eb; padding-left:14px; }
 .return-event p { margin:5px 0; color:#475569; }
-@media(max-width:900px){ .return-summary-grid,.return-action-grid{grid-template-columns:1fr;} }
+.return-shipping-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.return-shipping-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+.return-shipping-stat { padding:14px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; }
+.return-shipping-stat small { display:block; margin-bottom:5px; color:#64748b; font-weight:800; text-transform:uppercase; }
+@media(max-width:900px){ .return-summary-grid,.return-action-grid,.return-shipping-grid,.return-shipping-summary{grid-template-columns:1fr;} }
 </style>
 
 <div class="return-show-page">
@@ -114,6 +120,159 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
                     )
                 ) ?>
             </p>
+        </section>
+    <?php endif; ?>
+
+
+    <?php if (
+        ! empty($return['rma_number'])
+        && ! in_array(
+            $status,
+            ['requested', 'cancelled'],
+            true
+        )
+    ): ?>
+        <section class="return-panel">
+            <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+                <div>
+                    <h2 style="margin-top:0;">Return Shipping Label and Tracking</h2>
+                    <p style="color:#64748b;">Manual carrier record and printable package identification label. This does not purchase carrier postage.</p>
+                </div>
+
+                <?php if ($shipment): ?>
+                    <a
+                        href="/admin/returns/<?= $escape($return['id']) ?>/shipping-label"
+                        class="button-primary"
+                        target="_blank"
+                    >
+                        Print Package Label
+                    </a>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($shipment): ?>
+                <div class="return-shipping-summary">
+                    <article class="return-shipping-stat"><small>Status</small><strong><?= $escape($label($shipment['status'])) ?></strong></article>
+                    <article class="return-shipping-stat"><small>Carrier</small><strong><?= $escape($shipment['carrier_name']) ?></strong></article>
+                    <article class="return-shipping-stat"><small>Tracking</small><strong><?= $escape($shipment['tracking_number']) ?></strong></article>
+                    <article class="return-shipping-stat"><small>Last Event</small><strong><?= $escape($shipment['last_event_at'] ?? '—') ?></strong></article>
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" action="/admin/returns/<?= $escape($return['id']) ?>/shipping">
+                <input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>">
+
+                <div class="return-shipping-grid">
+                    <div class="form-group">
+                        <label for="carrier_code">Carrier</label>
+                        <select id="carrier_code" name="carrier_code" required>
+                            <?php foreach ([
+                                'usps' => 'USPS',
+                                'ups' => 'UPS',
+                                'fedex' => 'FedEx',
+                                'dhl' => 'DHL',
+                                'other' => 'Other',
+                            ] as $code => $name): ?>
+                                <option value="<?= $escape($code) ?>" <?= ($shipment['carrier_code'] ?? 'usps') === $code ? 'selected' : '' ?>><?= $escape($name) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="carrier_name">Other Carrier Name</label>
+                        <input id="carrier_name" type="text" name="carrier_name" maxlength="100" value="<?= $escape(($shipment['carrier_code'] ?? '') === 'other' ? ($shipment['carrier_name'] ?? '') : '') ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="service_name">Service</label>
+                        <input id="service_name" type="text" name="service_name" maxlength="100" value="<?= $escape($shipment['service_name'] ?? '') ?>" placeholder="Ground, Priority Mail, Express">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tracking_number">Tracking Number</label>
+                        <input id="tracking_number" type="text" name="tracking_number" maxlength="191" value="<?= $escape($shipment['tracking_number'] ?? '') ?>" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tracking_url">Carrier Tracking URL</label>
+                        <input id="tracking_url" type="url" name="tracking_url" maxlength="1000" value="<?= $escape($shipment['tracking_url'] ?? '') ?>" placeholder="https://...">
+                    </div>
+
+                    <div class="return-shipping-grid">
+                        <div class="form-group">
+                            <label for="label_cost">Label Cost</label>
+                            <input id="label_cost" type="number" name="label_cost" min="0" step="0.01" value="<?= $escape(number_format((float)($shipment['label_cost'] ?? 0), 2, '.', '')) ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="currency">Currency</label>
+                            <input id="currency" type="text" name="currency" maxlength="3" value="<?= $escape($shipment['currency'] ?? 'USD') ?>" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="public_note">Customer Shipping Note</label>
+                    <textarea id="public_note" name="public_note" rows="3" maxlength="1000"><?= $escape($shipment['public_note'] ?? '') ?></textarea>
+                </div>
+
+                <button type="submit" class="button-primary">
+                    <?= $shipment ? 'Update Shipping Details' : 'Create Shipping Label' ?>
+                </button>
+            </form>
+
+            <?php if ($shipment): ?>
+                <hr style="margin:24px 0;border:0;border-top:1px solid #e2e8f0;">
+
+                <h3>Record Carrier Event</h3>
+
+                <form method="POST" action="/admin/returns/<?= $escape($return['id']) ?>/shipping/status">
+                    <input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>">
+
+                    <div class="return-shipping-grid">
+                        <div class="form-group">
+                            <label for="shipment_status">Status</label>
+                            <select id="shipment_status" name="status" required>
+                                <?php foreach ([
+                                    'label_ready' => 'Label Ready',
+                                    'in_transit' => 'In Transit',
+                                    'delivered' => 'Delivered',
+                                    'exception' => 'Exception',
+                                    'cancelled' => 'Cancelled',
+                                ] as $value => $text): ?>
+                                    <option value="<?= $escape($value) ?>"><?= $escape($text) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="event_at">Event Time</label>
+                            <input id="event_at" type="datetime-local" name="event_at">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="shipment_location">Location</label>
+                            <input id="shipment_location" type="text" name="location" maxlength="191">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="shipment_description">Description</label>
+                            <input id="shipment_description" type="text" name="description" maxlength="1000">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="button-primary">Record Shipment Event</button>
+                </form>
+
+                <div class="return-timeline" style="margin-top:22px;">
+                    <?php foreach ($shipmentEvents as $shipmentEvent): ?>
+                        <article class="return-event">
+                            <strong><?= $escape($shipmentEvent['title']) ?></strong>
+                            <?php if (! empty($shipmentEvent['description'])): ?><p><?= $escape($shipmentEvent['description']) ?></p><?php endif; ?>
+                            <small><?= $escape($shipmentEvent['event_at']) ?><?= ! empty($shipmentEvent['location']) ? ' · ' . $escape($shipmentEvent['location']) : '' ?></small>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </section>
     <?php endif; ?>
 

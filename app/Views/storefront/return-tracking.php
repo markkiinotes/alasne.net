@@ -14,6 +14,9 @@ $label = static fn (mixed $value): string =>
         str_replace('_', ' ', (string) $value)
     );
 
+$shipment = $shipment ?? null;
+$shipment_events = $shipment_events ?? [];
+
 $eventMessages = [
     'return_requested' =>
         'The store received the return request.',
@@ -29,6 +32,16 @@ $eventMessages = [
         'The payment refund was completed.',
     'refund_failed' =>
         'The payment refund requires store review.',
+    'shipment_label_ready' =>
+        'A carrier and tracking number were assigned.',
+    'shipment_in_transit' =>
+        'The return shipment is in transit.',
+    'shipment_delivered' =>
+        'The carrier reports the package delivered.',
+    'shipment_exception' =>
+        'The carrier reported an exception or delay.',
+    'shipment_cancelled' =>
+        'The shipping record was cancelled.',
 ];
 ?>
 
@@ -469,6 +482,49 @@ $eventMessages = [
                         Print Return Authorization
                     </button>
                 </form>
+            </section>
+        <?php endif; ?>
+
+
+        <?php if ($shipment): ?>
+            <section class="return-track-panel">
+                <h2>Return Shipment</h2>
+
+                <div class="return-track-summary">
+                    <article class="return-track-stat"><span>Status</span><strong><?= $escape($label($shipment['status'])) ?></strong></article>
+                    <article class="return-track-stat"><span>Carrier</span><strong><?= $escape($shipment['carrier_name']) ?></strong></article>
+                    <article class="return-track-stat"><span>Service</span><strong><?= $escape($shipment['service_name'] ?? '—') ?></strong></article>
+                    <article class="return-track-stat"><span>Tracking</span><strong><?= $escape($shipment['tracking_number']) ?></strong></article>
+                </div>
+
+                <?php if (! empty($shipment['public_note'])): ?>
+                    <p><?= nl2br($escape($shipment['public_note'])) ?></p>
+                <?php endif; ?>
+
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin:18px 0;">
+                    <?php if (! empty($shipment['tracking_url'])): ?>
+                        <a href="<?= $escape($shipment['tracking_url']) ?>" class="return-track-button" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;">Open Carrier Tracking</a>
+                    <?php endif; ?>
+
+                    <?php if ($shipment['status'] !== 'cancelled'): ?>
+                        <form method="POST" action="/store/<?= $escape($store['slug']) ?>/returns/shipping-label">
+                            <input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>">
+                            <input type="hidden" name="return_number" value="<?= $escape($return_number) ?>">
+                            <input type="hidden" name="email" value="<?= $escape($customer_email) ?>">
+                            <button type="submit" class="return-track-button">Print Package Label</button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+
+                <div class="return-track-timeline">
+                    <?php foreach ($shipment_events as $shipmentEvent): ?>
+                        <article class="return-track-event">
+                            <strong><?= $escape($shipmentEvent['title']) ?></strong>
+                            <?php if (! empty($shipmentEvent['description'])): ?><p><?= $escape($shipmentEvent['description']) ?></p><?php endif; ?>
+                            <small><?= $escape($shipmentEvent['event_at']) ?><?= ! empty($shipmentEvent['location']) ? ' · ' . $escape($shipmentEvent['location']) : '' ?></small>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
             </section>
         <?php endif; ?>
 

@@ -7,12 +7,14 @@ namespace App\Controllers;
 use App\Core\Controller;
 use App\Core\Request;
 use App\Repositories\ReturnRepository;
+use App\Repositories\ReturnShippingRepository;
 use App\Services\Auth\CsrfService;
 
 class ReturnTrackingController extends Controller
 {
     public function __construct(
         private ReturnRepository $returns,
+        private ReturnShippingRepository $shipments,
         private CsrfService $csrf
     ) {
         parent::__construct();
@@ -32,6 +34,8 @@ class ReturnTrackingController extends Controller
             $store,
             null,
             [],
+            [],
+            null,
             [],
             trim(
                 (string) $this->request->input(
@@ -79,6 +83,8 @@ class ReturnTrackingController extends Controller
                 null,
                 [],
                 [],
+                null,
+                [],
                 $returnNumber,
                 $customerEmail,
                 'Security token expired. Please try again.'
@@ -96,6 +102,8 @@ class ReturnTrackingController extends Controller
                 $store,
                 null,
                 [],
+                [],
+                null,
                 [],
                 $returnNumber,
                 $customerEmail,
@@ -119,6 +127,8 @@ class ReturnTrackingController extends Controller
                 null,
                 [],
                 [],
+                null,
+                [],
                 $returnNumber,
                 $customerEmail,
                 'We could not find a matching return. Check the return number and email address.'
@@ -134,6 +144,20 @@ class ReturnTrackingController extends Controller
             $this->returns->publicEvents(
                 (int) $return['id']
             ),
+            $this->shipments->publicForReturn(
+                (int) $return['id']
+            ),
+            (
+                $shipment = $this->shipments
+                    ->publicForReturn(
+                        (int) $return['id']
+                    )
+            )
+                ? $this->shipments->events(
+                    (int) $shipment['id'],
+                    true
+                )
+                : [],
             $returnNumber,
             $customerEmail,
             null
@@ -217,6 +241,83 @@ class ReturnTrackingController extends Controller
         );
     }
 
+
+    public function shippingLabel(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $returnNumber = strtoupper(
+            trim(
+                (string) $this->request->input(
+                    'return_number'
+                )
+            )
+        );
+
+        $customerEmail = strtolower(
+            trim(
+                (string) $this->request->input(
+                    'email'
+                )
+            )
+        );
+
+        if (! $this->csrf->validate(
+            (string) $this->request->input(
+                '_csrf_token'
+            )
+        )) {
+            http_response_code(403);
+
+            return 'Security token expired. Return to tracking and try again.';
+        }
+
+        $return = $this->returns
+            ->findPublicByCredentials(
+                (string) $store['slug'],
+                $returnNumber,
+                $customerEmail
+            );
+
+        $this->csrf->regenerate();
+
+        if (! $return) {
+            http_response_code(404);
+
+            return 'Return shipping label not found.';
+        }
+
+        $shipment = $this->shipments
+            ->publicForReturn((int) $return['id']);
+
+        if (
+            ! $shipment
+            || $shipment['status'] === 'cancelled'
+        ) {
+            http_response_code(404);
+
+            return 'Return shipping label is not available.';
+        }
+
+        return $this->view(
+            'storefront.return-shipping-label',
+            [
+                'title' =>
+                    'Return Shipping Label '
+                    . $return['rma_number'],
+                'store' => $store,
+                'return' => $return,
+                'shipment' => $shipment,
+            ]
+        );
+    }
+
     private function storeFromRequest(
         Request $request
     ): ?array {
@@ -238,6 +339,8 @@ class ReturnTrackingController extends Controller
         ?array $return,
         array $items,
         array $events,
+        ?array $shipment,
+        array $shipmentEvents,
         string $returnNumber,
         string $customerEmail,
         ?string $error
@@ -252,6 +355,8 @@ class ReturnTrackingController extends Controller
                 'return' => $return,
                 'items' => $items,
                 'events' => $events,
+                'shipment' => $shipment,
+                'shipment_events' => $shipmentEvents,
                 'return_number' => $returnNumber,
                 'customer_email' => $customerEmail,
                 'csrf_token' =>
