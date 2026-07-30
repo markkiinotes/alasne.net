@@ -22,6 +22,7 @@ use App\Controllers\CartController;
 use App\Controllers\CheckoutController;
 use App\Controllers\HomeController;
 use App\Controllers\OrderTrackingController;
+use App\Controllers\ReturnTrackingController;
 use App\Controllers\StorefrontController;
 
 $router = $app->router;
@@ -577,6 +578,17 @@ $router->post(
 $router->get(
     '/store/{store_slug}/checkout/success',
     [CheckoutController::class, 'success']
+);
+
+
+$router->get(
+    '/store/{store_slug}/returns/track',
+    [ReturnTrackingController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/track',
+    [ReturnTrackingController::class, 'lookup']
 );
 
 $router->get(

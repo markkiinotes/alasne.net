@@ -25,6 +25,7 @@ class ReturnRepository
                 o.payment_status,
                 o.grand_total,
                 s.name AS store_name,
+                s.slug AS store_slug,
                 CONCAT(
                     c.first_name,
                     ' ',
@@ -862,6 +863,155 @@ class ReturnRepository
             'balance_after' => $balanceAfter,
             'note' => $note,
         ]);
+    }
+
+
+    public function storeBySlug(
+        string $storeSlug
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT
+                id,
+                name,
+                slug
+            FROM stores
+            WHERE slug = :slug
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'slug' => trim($storeSlug),
+        ]);
+
+        $store = $stmt->fetch();
+
+        return $store ?: null;
+    }
+
+    public function findPublicByCredentials(
+        string $storeSlug,
+        string $returnNumber,
+        string $customerEmail
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT
+                r.id,
+                r.return_number,
+                r.status,
+                r.reason_code,
+                r.currency,
+                r.requested_refund_amount,
+                r.approved_refund_amount,
+                r.refund_status,
+                r.requested_at,
+                r.approved_at,
+                r.received_at,
+                r.completed_at,
+                r.cancelled_at,
+                r.created_at,
+                o.id AS order_id,
+                o.order_number,
+                o.status AS order_status,
+                o.payment_status,
+                o.amount_paid,
+                o.amount_refunded,
+                s.name AS store_name,
+                s.slug AS store_slug,
+                CONCAT(
+                    c.first_name,
+                    ' ',
+                    c.last_name
+                ) AS customer_name,
+                c.email AS customer_email
+            FROM returns r
+            INNER JOIN orders o
+                ON o.id = r.order_id
+            INNER JOIN stores s
+                ON s.id = r.store_id
+            INNER JOIN customers c
+                ON c.id = o.customer_id
+            WHERE s.slug = :store_slug
+            AND r.return_number = :return_number
+            AND LOWER(c.email) = LOWER(:customer_email)
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'store_slug' => trim($storeSlug),
+            'return_number' => trim($returnNumber),
+            'customer_email' => trim($customerEmail),
+        ]);
+
+        $return = $stmt->fetch();
+
+        return $return ?: null;
+    }
+
+    public function publicItems(
+        int $returnId
+    ): array {
+        $stmt = $this->db->prepare("
+            SELECT
+                product_name,
+                product_sku,
+                quantity_requested,
+                quantity_received,
+                quantity_restocked,
+                quantity_discarded,
+                unit_price,
+                requested_refund_amount,
+                approved_refund_amount,
+                condition_code,
+                resolution_code
+            FROM return_items
+            WHERE return_id = :return_id
+            ORDER BY id ASC
+        ");
+
+        $stmt->execute([
+            'return_id' => $returnId,
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
+    public function publicEvents(
+        int $returnId
+    ): array {
+        $allowedTypes = [
+            'return_requested',
+            'return_approved',
+            'return_received',
+            'return_completed',
+            'return_cancelled',
+            'refund_succeeded',
+            'refund_failed',
+        ];
+
+        $placeholders = implode(
+            ', ',
+            array_fill(0, count($allowedTypes), '?')
+        );
+
+        $stmt = $this->db->prepare("
+            SELECT
+                type,
+                title,
+                old_value,
+                new_value,
+                created_at
+            FROM return_events
+            WHERE return_id = ?
+            AND type IN ({$placeholders})
+            ORDER BY created_at ASC, id ASC
+        ");
+
+        $stmt->execute([
+            $returnId,
+            ...$allowedTypes,
+        ]);
+
+        return $stmt->fetchAll();
     }
 
     private function money(mixed $value): string

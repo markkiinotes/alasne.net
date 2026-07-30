@@ -9,6 +9,8 @@ use App\Core\Request;
 use App\Repositories\ReturnRepository;
 use App\Repositories\StoreRepository;
 use App\Services\Auth\CsrfService;
+use App\Services\Mail\EmailOutboxSender;
+use App\Services\Returns\ReturnNotificationService;
 use App\Services\Returns\ReturnService;
 
 class ReturnController extends Controller
@@ -16,6 +18,8 @@ class ReturnController extends Controller
     public function __construct(
         private ReturnRepository $returns,
         private ReturnService $returnService,
+        private ReturnNotificationService $notifications,
+        private EmailOutboxSender $emailSender,
         private StoreRepository $stores,
         private CsrfService $csrf
     ) {
@@ -188,6 +192,11 @@ class ReturnController extends Controller
             $_SESSION['returns_success'] =
                 'Return created successfully.';
 
+            $this->queueNotification(
+                $returnId,
+                'requested'
+            );
+
             $this->response->redirect(
                 '/admin/returns/' . $returnId
             );
@@ -273,6 +282,11 @@ class ReturnController extends Controller
 
             $_SESSION['returns_success'] =
                 'Return approved successfully.';
+
+            $this->queueNotification(
+                $returnId,
+                'approved'
+            );
         } catch (\Throwable $exception) {
             $_SESSION['returns_error'] =
                 $exception->getMessage()
@@ -321,6 +335,11 @@ class ReturnController extends Controller
 
             $_SESSION['returns_success'] =
                 'Returned merchandise received successfully.';
+
+            $this->queueNotification(
+                $returnId,
+                'received'
+            );
         } catch (\Throwable $exception) {
             $_SESSION['returns_error'] =
                 $exception->getMessage()
@@ -402,16 +421,43 @@ class ReturnController extends Controller
                 $_SESSION['returns_error'] =
                     $transaction['failure_message']
                     ?? 'Return completed, but the refund failed.';
+
+                $this->queueNotification(
+                    $returnId,
+                    'refund_failed'
+                );
             } else {
                 $_SESSION['returns_success'] =
                     $processRefund
                         ? 'Return completed and refund processed successfully.'
                         : 'Return completed without a refund.';
+
+                $this->queueNotification(
+                    $returnId,
+                    'completed'
+                );
             }
         } catch (\Throwable $exception) {
             $_SESSION['returns_error'] =
                 $exception->getMessage()
                 ?: 'Unable to complete the return.';
+
+            $updatedReturn = $this->returns->find(
+                $returnId
+            );
+
+            if (
+                $updatedReturn
+                && ($updatedReturn['status'] ?? '')
+                    === 'completed'
+                && ($updatedReturn['refund_status'] ?? '')
+                    === 'failed'
+            ) {
+                $this->queueNotification(
+                    $returnId,
+                    'refund_failed'
+                );
+            }
         }
 
         $this->response->redirect(
@@ -446,6 +492,11 @@ class ReturnController extends Controller
 
             $_SESSION['returns_success'] =
                 'Return cancelled successfully.';
+
+            $this->queueNotification(
+                $returnId,
+                'cancelled'
+            );
         } catch (\Throwable $exception) {
             $_SESSION['returns_error'] =
                 $exception->getMessage()
@@ -455,6 +506,30 @@ class ReturnController extends Controller
         $this->response->redirect(
             '/admin/returns/' . $returnId
         );
+    }
+
+
+    private function queueNotification(
+        int $returnId,
+        string $event
+    ): void {
+        try {
+            $outboxId =
+                $this->notifications->queueForEvent(
+                    $returnId,
+                    $event
+                );
+
+            if ($outboxId !== null) {
+                $this->emailSender->sendOne(
+                    $outboxId
+                );
+            }
+        } catch (\Throwable $exception) {
+            $_SESSION['returns_error'] =
+                'The return was updated, but its customer notification could not be queued: '
+                . $exception->getMessage();
+        }
     }
 
     private function validateCsrf(): bool
