@@ -79,6 +79,18 @@ class ReturnRepository
             $parameters['status'] = $status;
         }
 
+        $requestSource = trim(
+            (string) (
+                $filters['request_source'] ?? ''
+            )
+        );
+
+        if ($requestSource !== '') {
+            $sql .= ' AND r.request_source = :request_source';
+            $parameters['request_source'] =
+                $requestSource;
+        }
+
         $storeId = (int) (
             $filters['store_id'] ?? 0
         );
@@ -231,6 +243,17 @@ class ReturnRepository
         $stmt = $this->db->prepare("
             SELECT
                 o.*,
+                COALESCE(
+                    NULLIF(o.amount_paid, 0),
+                    (
+                        SELECT MAX(pt.amount)
+                        FROM payment_transactions pt
+                        WHERE pt.order_id = o.id
+                        AND pt.type = 'charge'
+                        AND pt.status = 'succeeded'
+                    ),
+                    0
+                ) AS verified_amount_paid,
                 s.name AS store_name,
                 CONCAT(
                     c.first_name,
@@ -312,6 +335,7 @@ class ReturnRepository
                 store_id,
                 order_id,
                 status,
+                request_source,
                 reason_code,
                 reason_details,
                 customer_notes,
@@ -330,6 +354,7 @@ class ReturnRepository
                 :store_id,
                 :order_id,
                 :status,
+                :request_source,
                 :reason_code,
                 :reason_details,
                 :customer_notes,
@@ -351,6 +376,8 @@ class ReturnRepository
             'store_id' => (int) $data['store_id'],
             'order_id' => (int) $data['order_id'],
             'status' => $data['status'] ?? 'requested',
+            'request_source' =>
+                $data['request_source'] ?? 'admin',
             'reason_code' => $data['reason_code'] ?? 'other',
             'reason_details' => $this->nullable(
                 $data['reason_details'] ?? null
@@ -886,6 +913,58 @@ class ReturnRepository
         $store = $stmt->fetch();
 
         return $store ?: null;
+    }
+
+
+    public function findOrderForCustomerCredentials(
+        string $storeSlug,
+        string $orderNumber,
+        string $customerEmail
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT
+                o.*,
+                COALESCE(
+                    NULLIF(o.amount_paid, 0),
+                    (
+                        SELECT MAX(pt.amount)
+                        FROM payment_transactions pt
+                        WHERE pt.order_id = o.id
+                        AND pt.type = 'charge'
+                        AND pt.status = 'succeeded'
+                    ),
+                    0
+                ) AS verified_amount_paid,
+                s.name AS store_name,
+                s.slug AS store_slug,
+                CONCAT(
+                    c.first_name,
+                    ' ',
+                    c.last_name
+                ) AS customer_name,
+                c.email AS customer_email
+            FROM orders o
+            INNER JOIN stores s
+                ON s.id = o.store_id
+            INNER JOIN customers c
+                ON c.id = o.customer_id
+            WHERE s.slug = :store_slug
+            AND UPPER(o.order_number) =
+                UPPER(:order_number)
+            AND LOWER(c.email) =
+                LOWER(:customer_email)
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'store_slug' => trim($storeSlug),
+            'order_number' => trim($orderNumber),
+            'customer_email' => trim($customerEmail),
+        ]);
+
+        $order = $stmt->fetch();
+
+        return $order ?: null;
     }
 
     public function findPublicByCredentials(

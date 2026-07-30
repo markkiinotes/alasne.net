@@ -90,7 +90,8 @@ $eventMessages = [
     font: inherit;
 }
 
-.return-track-button {
+.return-track-button,
+.return-track-secondary {
     min-height: 46px;
     padding: 0 20px;
     border: 0;
@@ -100,6 +101,19 @@ $eventMessages = [
     font: inherit;
     font-weight: 800;
     cursor: pointer;
+}
+
+.return-track-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 20px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #111827;
+    font-weight: 800;
+    text-decoration: none;
 }
 
 .return-track-error {
@@ -260,6 +274,17 @@ $eventMessages = [
                 Find Return
             </button>
         </form>
+
+        <div style="margin-top:18px;">
+            <a
+                href="/store/<?= $escape(
+                    $store['slug']
+                ) ?>/returns/request"
+                class="return-track-secondary"
+            >
+                Start a New Return
+            </a>
+        </div>
     </section>
 
     <?php if (! empty($return)): ?>

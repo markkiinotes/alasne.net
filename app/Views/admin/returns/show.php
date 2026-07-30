@@ -45,7 +45,7 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
     <?php if (! empty($error)): ?><div class="return-alert error"><?= $escape($error) ?></div><?php endif; ?>
 
     <section class="return-summary-grid">
-        <article class="return-panel"><small>Status</small><h2><span class="return-status <?= $escape($status) ?>"><?= $escape($label($status)) ?></span></h2><p>Refund: <?= $escape($label($return['refund_status'])) ?></p></article>
+        <article class="return-panel"><small>Status</small><h2><span class="return-status <?= $escape($status) ?>"><?= $escape($label($status)) ?></span></h2><p>Refund: <?= $escape($label($return['refund_status'])) ?><br>Source: <?= $escape(($return['request_source'] ?? 'admin') === 'customer' ? 'Customer Self-Service' : 'Mission Control') ?></p></article>
         <article class="return-panel"><small>Requested Merchandise</small><h2>$<?= number_format((float)$return['requested_refund_amount'],2) ?> <?= $escape($currency) ?></h2><p>Reason: <?= $escape($label($return['reason_code'])) ?></p></article>
         <article class="return-panel"><small>Approved Merchandise</small><h2>$<?= number_format((float)$return['approved_refund_amount'],2) ?> <?= $escape($currency) ?></h2><p>Refunded: $<?= number_format((float)($return['refunded_amount'] ?? 0), 2) ?> <?= $escape($currency) ?><br>Transaction: <?= !empty($return['refund_transaction_id']) ? '#'.$escape($return['refund_transaction_id']) : '—' ?></p></article>
     </section>

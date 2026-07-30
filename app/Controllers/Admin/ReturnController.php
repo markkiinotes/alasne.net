@@ -39,6 +39,11 @@ class ReturnController extends Controller
             ),
             'store_id' => (int)
                 $this->request->input('store_id'),
+            'request_source' => trim(
+                (string) $this->request->input(
+                    'request_source'
+                )
+            ),
         ];
 
         $success =
@@ -67,6 +72,10 @@ class ReturnController extends Controller
                     'received',
                     'completed',
                     'cancelled',
+                ],
+                'sources' => [
+                    'admin',
+                    'customer',
                 ],
                 'success' => $success,
                 'error' => $error,

@@ -21,7 +21,7 @@ $label = static fn (mixed $value): string =>
 .returns-header h1 { margin:0 0 6px; }
 .returns-header p { margin:0; color:#64748b; }
 .returns-panel { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:22px; box-shadow:0 10px 26px rgba(15,23,42,.06); }
-.returns-filters { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:12px; align-items:end; }
+.returns-filters { display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:12px; align-items:end; }
 .returns-table-wrap { overflow-x:auto; }
 .returns-table { width:100%; border-collapse:collapse; }
 .returns-table th,.returns-table td { padding:14px 12px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:top; }
@@ -79,6 +79,27 @@ $label = static fn (mixed $value): string =>
                 </select>
             </div>
 
+            <div class="form-group">
+                <label for="request_source">Source</label>
+                <select id="request_source" name="request_source">
+                    <option value="">All sources</option>
+                    <?php foreach ($sources as $source): ?>
+                        <option
+                            value="<?= $escape($source) ?>"
+                            <?= ($filters['request_source'] ?? '') === $source
+                                ? 'selected'
+                                : '' ?>
+                        >
+                            <?= $escape(
+                                $source === 'customer'
+                                    ? 'Customer Self-Service'
+                                    : 'Mission Control'
+                            ) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
             <button type="submit" class="button-primary">Filter</button>
         </form>
     </section>
@@ -93,6 +114,7 @@ $label = static fn (mixed $value): string =>
                         <th>Customer</th>
                         <th>Store</th>
                         <th>Status</th>
+                        <th>Source</th>
                         <th>Requested</th>
                         <th>Approved</th>
                         <th>Refund</th>
@@ -108,6 +130,11 @@ $label = static fn (mixed $value): string =>
                             <td><?= $escape($return['customer_name'] ?? '—') ?><br><small><?= $escape($return['customer_email'] ?? '') ?></small></td>
                             <td><?= $escape($return['store_name']) ?></td>
                             <td><span class="return-badge <?= $escape($return['status']) ?>"><?= $escape($label($return['status'])) ?></span></td>
+                            <td><?= $escape(
+                                ($return['request_source'] ?? 'admin') === 'customer'
+                                    ? 'Customer Self-Service'
+                                    : 'Mission Control'
+                            ) ?></td>
                             <td>$<?= number_format((float)$return['requested_refund_amount'], 2) ?></td>
                             <td>$<?= number_format((float)$return['approved_refund_amount'], 2) ?></td>
                             <td><?= $escape($label($return['refund_status'])) ?></td>
@@ -116,7 +143,7 @@ $label = static fn (mixed $value): string =>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (empty($returns)): ?>
-                        <tr><td colspan="10">No returns matched the selected filters.</td></tr>
+                        <tr><td colspan="11">No returns matched the selected filters.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

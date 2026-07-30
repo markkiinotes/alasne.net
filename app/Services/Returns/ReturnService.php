@@ -42,12 +42,34 @@ class ReturnService
             );
         }
 
-        if (
-            (float) ($order['amount_paid'] ?? 0)
-            <= 0
-        ) {
+        $verifiedAmountPaid = (float) (
+            $order['verified_amount_paid']
+            ?? $order['amount_paid']
+            ?? 0
+        );
+
+        if ($verifiedAmountPaid <= 0) {
             throw new RuntimeException(
                 'Only paid orders can receive a return.'
+            );
+        }
+
+        $requestSource = strtolower(
+            trim(
+                (string) (
+                    $data['request_source']
+                    ?? 'admin'
+                )
+            )
+        );
+
+        if (! in_array(
+            $requestSource,
+            ['admin', 'customer'],
+            true
+        )) {
+            throw new RuntimeException(
+                'Return request source is invalid.'
             );
         }
 
@@ -148,6 +170,7 @@ class ReturnService
                 'store_id' => (int) $order['store_id'],
                 'order_id' => $orderId,
                 'status' => 'requested',
+                'request_source' => $requestSource,
                 'reason_code' => $reasonCode,
                 'reason_details' =>
                     $data['reason_details'] ?? null,
@@ -194,13 +217,20 @@ class ReturnService
                 );
             }
 
+            $creationDescription =
+                $requestSource === 'customer'
+                    ? 'The customer submitted this return through the storefront for order '
+                        . $order['order_number']
+                        . '.'
+                    : 'The return was created in Mission Control for order '
+                        . $order['order_number']
+                        . '.';
+
             $this->returns->recordEvent(
                 $returnId,
                 'return_requested',
                 'Return requested',
-                'The return was created for order '
-                . $order['order_number']
-                . '.',
+                $creationDescription,
                 null,
                 'requested'
             );
@@ -218,7 +248,7 @@ class ReturnService
                 . ' in merchandise.',
                 null,
                 $returnNumber,
-                false
+                $requestSource === 'customer'
             );
 
             $this->db->commit();

@@ -20,6 +20,7 @@ use App\Controllers\Admin\UserController;
 use App\Controllers\AuthController;
 use App\Controllers\CartController;
 use App\Controllers\CheckoutController;
+use App\Controllers\CustomerReturnController;
 use App\Controllers\HomeController;
 use App\Controllers\OrderTrackingController;
 use App\Controllers\ReturnTrackingController;
@@ -580,6 +581,27 @@ $router->get(
     [CheckoutController::class, 'success']
 );
 
+
+
+$router->get(
+    '/store/{store_slug}/returns/request',
+    [CustomerReturnController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/request/lookup',
+    [CustomerReturnController::class, 'lookup']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/request',
+    [CustomerReturnController::class, 'store']
+);
+
+$router->get(
+    '/store/{store_slug}/returns/request/success/{token}',
+    [CustomerReturnController::class, 'success']
+);
 
 $router->get(
     '/store/{store_slug}/returns/track',
