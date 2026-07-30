@@ -8,7 +8,54 @@
         <?= htmlspecialchars($store['status']) ?>
     </p>
 </section>
+<div class="form-actions">
+	<a
+		href="/store/<?= htmlspecialchars($store['slug']) ?>"
+		class="button-primary"
+		target="_blank"
+	>
+		Preview Storefront
+	</a>
+    <a
+        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/shipping-methods"
+        class="button-primary"
+    >
+        Manage Shipping Methods
+    </a>
 
+    <a
+        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/tax-rules"
+        class="button-primary"
+    >
+        Manage Tax Rules
+    </a>
+
+    <a
+        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/payment-methods"
+        class="button-primary"
+    >
+        Manage Payment Methods
+    </a>
+
+    <a
+        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/return-policy"
+        class="button-primary"
+    >
+        Manage Return Policy
+    </a>
+
+    <a
+        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/edit"
+        class="button-primary"
+    >
+        Edit Store
+    </a>
+
+    <a href="/admin/stores" class="button-muted">
+        Back to Stores
+    </a>
+</div>
+<br />
 <section class="card-grid metrics-grid">
     <div class="metric-card">
         <span>Products</span>
@@ -166,44 +213,5 @@
         </tbody>
     </table>
 </section>
-<br />
-<div class="form-actions">
-	<a
-		href="/store/<?= htmlspecialchars($store['slug']) ?>"
-		class="button-primary"
-		target="_blank"
-	>
-		Preview Storefront
-	</a>
-    <a
-        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/shipping-methods"
-        class="button-primary"
-    >
-        Manage Shipping Methods
-    </a>
 
-    <a
-        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/tax-rules"
-        class="button-primary"
-    >
-        Manage Tax Rules
-    </a>
 
-    <a
-        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/payment-methods"
-        class="button-primary"
-    >
-        Manage Payment Methods
-    </a>
-
-    <a
-        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/edit"
-        class="button-primary"
-    >
-        Edit Store
-    </a>
-
-    <a href="/admin/stores" class="button-muted">
-        Back to Stores
-    </a>
-</div>

@@ -123,6 +123,26 @@ $escape = static fn (mixed $value): string =>
         </div>
 
         <?php if (! empty(
+            $return['rma_number']
+        )): ?>
+            <div class="return-success-number">
+                <span>RMA</span>
+
+                <strong>
+                    <?= $escape(
+                        $return['rma_number']
+                    ) ?>
+                </strong>
+            </div>
+
+            <p>
+                Your request was automatically approved.
+                Open the tracking page to review and print
+                the authorization.
+            </p>
+        <?php endif; ?>
+
+        <?php if (! empty(
             $notification_warning
         )): ?>
             <div class="return-success-warning">

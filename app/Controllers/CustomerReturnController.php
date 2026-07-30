@@ -6,12 +6,12 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Core\Request;
+use App\Repositories\ReturnPolicyRepository;
 use App\Repositories\ReturnRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Mail\EmailOutboxSender;
 use App\Services\Returns\ReturnNotificationService;
 use App\Services\Returns\ReturnService;
-use RuntimeException;
 
 class CustomerReturnController extends Controller
 {
@@ -22,6 +22,7 @@ class CustomerReturnController extends Controller
 
     public function __construct(
         private ReturnRepository $returns,
+        private ReturnPolicyRepository $policies,
         private ReturnService $returnService,
         private ReturnNotificationService $notifications,
         private EmailOutboxSender $emailSender,
@@ -40,10 +41,16 @@ class CustomerReturnController extends Controller
             return '404 - Store not found';
         }
 
+        $policy = $this->policies->forStore(
+            (int) $store['id']
+        );
+
         return $this->renderRequestPage(
             $store,
+            $policy,
             null,
             [],
+            null,
             null,
             '',
             '',
@@ -61,6 +68,10 @@ class CustomerReturnController extends Controller
             return '404 - Store not found';
         }
 
+        $policy = $this->policies->forStore(
+            (int) $store['id']
+        );
+
         $orderNumber = strtoupper(
             trim(
                 (string) $this->request->input(
@@ -77,11 +88,27 @@ class CustomerReturnController extends Controller
             )
         );
 
+        if ((int) $policy['is_enabled'] !== 1) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'This store is not currently accepting customer return requests.'
+            );
+        }
+
         if (! $this->validateCsrf()) {
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
+                null,
                 null,
                 $orderNumber,
                 $customerEmail,
@@ -94,8 +121,10 @@ class CustomerReturnController extends Controller
         )) {
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
+                null,
                 null,
                 $orderNumber,
                 $customerEmail,
@@ -112,8 +141,10 @@ class CustomerReturnController extends Controller
         ) {
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
+                null,
                 null,
                 $orderNumber,
                 $customerEmail,
@@ -131,8 +162,6 @@ class CustomerReturnController extends Controller
 
         if (
             ! $order
-            || (string) ($order['status'] ?? '')
-                === 'cancelled'
             || (float) (
                 $order['verified_amount_paid']
                 ?? $order['amount_paid']
@@ -141,12 +170,32 @@ class CustomerReturnController extends Controller
         ) {
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
+                null,
                 null,
                 $orderNumber,
                 $customerEmail,
                 'We could not find an eligible paid order with those details.'
+            );
+        }
+
+        $eligibility =
+            $this->policies
+                ->customerEligibility($order);
+
+        if (! $eligibility['eligible']) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                $orderNumber,
+                $customerEmail,
+                (string) $eligibility['message']
             );
         }
 
@@ -171,9 +220,11 @@ class CustomerReturnController extends Controller
         if (! $hasReturnableItems) {
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
                 null,
+                $eligibility,
                 $orderNumber,
                 $customerEmail,
                 'No items from this order remain available for return.'
@@ -187,8 +238,8 @@ class CustomerReturnController extends Controller
             $accessToken
         ] = [
             'store_slug' => (string) $store['slug'],
-            'order_number' => (string)
-                $order['order_number'],
+            'order_number' =>
+                (string) $order['order_number'],
             'customer_email' => $customerEmail,
             'expires_at' =>
                 time() + self::ACCESS_TTL_SECONDS,
@@ -198,9 +249,11 @@ class CustomerReturnController extends Controller
 
         return $this->renderRequestPage(
             $store,
+            $policy,
             $order,
             $items,
             $accessToken,
+            $eligibility,
             $orderNumber,
             $customerEmail,
             null
@@ -217,11 +270,17 @@ class CustomerReturnController extends Controller
             return '404 - Store not found';
         }
 
+        $policy = $this->policies->forStore(
+            (int) $store['id']
+        );
+
         if (! $this->validateCsrf()) {
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
+                null,
                 null,
                 '',
                 '',
@@ -252,8 +311,10 @@ class CustomerReturnController extends Controller
         ) {
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
+                null,
                 null,
                 '',
                 '',
@@ -278,8 +339,10 @@ class CustomerReturnController extends Controller
 
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 null,
                 [],
+                null,
                 null,
                 '',
                 '',
@@ -296,9 +359,11 @@ class CustomerReturnController extends Controller
             $quantities = [];
         }
 
-        $reasonCode = trim(
-            (string) $this->request->input(
-                'reason_code'
+        $reasonCode = strtolower(
+            trim(
+                (string) $this->request->input(
+                    'reason_code'
+                )
             )
         );
 
@@ -313,6 +378,32 @@ class CustomerReturnController extends Controller
                 'customer_notes'
             )
         );
+
+        $eligibility =
+            $this->policies->customerEligibility(
+                $order,
+                $reasonCode
+            );
+
+        if (! $eligibility['eligible']) {
+            unset(
+                $_SESSION['customer_return_access'][
+                    $accessToken
+                ]
+            );
+
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                (string) $order['order_number'],
+                (string) $access['customer_email'],
+                (string) $eligibility['message']
+            );
+        }
 
         try {
             $returnId = $this->returnService->create(
@@ -336,10 +427,21 @@ class CustomerReturnController extends Controller
             $notificationWarning = null;
 
             try {
+                $createdReturn =
+                    $this->returns->find(
+                        $returnId
+                    );
+
+                $notificationEvent =
+                    ($createdReturn['status'] ?? '')
+                    === 'approved'
+                        ? 'approved'
+                        : 'requested';
+
                 $outboxId =
                     $this->notifications->queueForEvent(
                         $returnId,
-                        'requested'
+                        $notificationEvent
                     );
 
                 if ($outboxId !== null) {
@@ -347,7 +449,7 @@ class CustomerReturnController extends Controller
                         $outboxId
                     );
                 }
-            } catch (\Throwable $exception) {
+            } catch (\Throwable) {
                 $notificationWarning =
                     'The request was created, but the confirmation email could not be sent immediately.';
             }
@@ -387,9 +489,11 @@ class CustomerReturnController extends Controller
 
             return $this->renderRequestPage(
                 $store,
+                $policy,
                 $order,
                 $items,
                 $accessToken,
+                $eligibility,
                 (string) $order['order_number'],
                 (string) $access['customer_email'],
                 $exception->getMessage()
@@ -479,9 +583,11 @@ class CustomerReturnController extends Controller
 
     private function renderRequestPage(
         array $store,
+        array $policy,
         ?array $order,
         array $items,
         ?string $accessToken,
+        ?array $eligibility,
         string $orderNumber,
         string $customerEmail,
         ?string $error,
@@ -494,9 +600,11 @@ class CustomerReturnController extends Controller
                     'Request a Return | '
                     . $store['name'],
                 'store' => $store,
+                'policy' => $policy,
                 'order' => $order,
                 'items' => $items,
                 'access_token' => $accessToken,
+                'eligibility' => $eligibility,
                 'order_number' => $orderNumber,
                 'customer_email' => $customerEmail,
                 'csrf_token' =>

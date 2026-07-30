@@ -110,6 +110,7 @@ $label = static fn (mixed $value): string =>
                 <thead>
                     <tr>
                         <th>Return</th>
+                        <th>RMA</th>
                         <th>Order</th>
                         <th>Customer</th>
                         <th>Store</th>
@@ -126,6 +127,7 @@ $label = static fn (mixed $value): string =>
                     <?php foreach ($returns as $return): ?>
                         <tr>
                             <td><strong><?= $escape($return['return_number']) ?></strong></td>
+                            <td><?= $escape($return['rma_number'] ?? '—') ?></td>
                             <td><a class="table-link" href="/admin/orders/<?= $escape($return['order_id']) ?>"><?= $escape($return['order_number']) ?></a></td>
                             <td><?= $escape($return['customer_name'] ?? '—') ?><br><small><?= $escape($return['customer_email'] ?? '') ?></small></td>
                             <td><?= $escape($return['store_name']) ?></td>
@@ -143,7 +145,7 @@ $label = static fn (mixed $value): string =>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (empty($returns)): ?>
-                        <tr><td colspan="11">No returns matched the selected filters.</td></tr>
+                        <tr><td colspan="12">No returns matched the selected filters.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

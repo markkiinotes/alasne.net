@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Returns;
 
+use DateTimeImmutable;
+use App\Repositories\ReturnPolicyRepository;
 use App\Repositories\ReturnRepository;
 use App\Services\Payments\PaymentService;
 use PDO;
@@ -14,6 +16,7 @@ class ReturnService
     public function __construct(
         private PDO $db,
         private ReturnRepository $returns,
+        private ReturnPolicyRepository $policies,
         private PaymentService $payments
     ) {
     }
@@ -160,6 +163,28 @@ class ReturnService
             );
         }
 
+        $autoApprove = false;
+
+        if ($requestSource === 'customer') {
+            $eligibility =
+                $this->policies
+                    ->customerEligibility(
+                        $order,
+                        $reasonCode
+                    );
+
+            if (! $eligibility['eligible']) {
+                throw new RuntimeException(
+                    (string) $eligibility['message']
+                );
+            }
+
+            $autoApprove =
+                (int) $eligibility['policy'][
+                    'auto_approve_customer_requests'
+                ] === 1;
+        }
+
         $this->db->beginTransaction();
 
         try {
@@ -251,6 +276,48 @@ class ReturnService
                 $requestSource === 'customer'
             );
 
+            if ($autoApprove) {
+                $approvalNote =
+                    'Automatically approved under the store return policy.';
+
+                $this->returns->approve(
+                    $returnId,
+                    $approvalNote
+                );
+
+                $authorization =
+                    $this->issueAuthorization(
+                        $returnId,
+                        (int) $order['store_id'],
+                        $returnNumber
+                    );
+
+                $this->returns->recordEvent(
+                    $returnId,
+                    'return_approved',
+                    'Return automatically approved',
+                    $approvalNote
+                    . ' RMA '
+                    . $authorization['rma_number']
+                    . ' was issued.',
+                    'requested',
+                    'approved'
+                );
+
+                $this->returns->recordOrderEvent(
+                    $orderId,
+                    'return_approved',
+                    'Return automatically approved',
+                    $returnNumber
+                    . ' was automatically approved. RMA '
+                    . $authorization['rma_number']
+                    . ' was issued.',
+                    'requested',
+                    'approved',
+                    true
+                );
+            }
+
             $this->db->commit();
 
             return $returnId;
@@ -291,11 +358,33 @@ class ReturnService
                 $notes
             );
 
+            $authorization =
+                $this->issueAuthorization(
+                    $returnId,
+                    (int) $return['store_id'],
+                    (string) $return['return_number']
+                );
+
+            $eventDescription = trim(
+                (string) $notes
+            );
+
+            if ($eventDescription !== '') {
+                $eventDescription .= ' ';
+            }
+
+            $eventDescription .=
+                'RMA '
+                . $authorization['rma_number']
+                . ' was issued and is valid through '
+                . $authorization['expires_display']
+                . '.';
+
             $this->returns->recordEvent(
                 $returnId,
                 'return_approved',
                 'Return approved',
-                $notes,
+                $eventDescription,
                 'requested',
                 'approved'
             );
@@ -305,7 +394,9 @@ class ReturnService
                 'return_approved',
                 'Return approved',
                 $return['return_number']
-                . ' was approved for receipt.',
+                . ' was approved. RMA '
+                . $authorization['rma_number']
+                . ' was issued.',
                 'requested',
                 'approved',
                 false
@@ -766,6 +857,126 @@ class ReturnService
 
             throw $exception;
         }
+    }
+
+
+    private function issueAuthorization(
+        int $returnId,
+        int $storeId,
+        string $returnNumber
+    ): array {
+        $policy = $this->policies->forStore(
+            $storeId
+        );
+
+        $issuedAt = new DateTimeImmutable('now');
+
+        $validDays = max(
+            1,
+            min(
+                365,
+                (int) (
+                    $policy[
+                        'authorization_valid_days'
+                    ]
+                    ?? 30
+                )
+            )
+        );
+
+        $expiresAt = $issuedAt->modify(
+            '+' . $validDays . ' days'
+        );
+
+        $rmaNumber =
+            'RMA-'
+            . $storeId
+            . '-'
+            . $issuedAt->format('Ymd')
+            . '-'
+            . str_pad(
+                (string) $returnId,
+                6,
+                '0',
+                STR_PAD_LEFT
+            );
+
+        $addressParts = array_filter(
+            [
+                trim(
+                    (string) (
+                        $policy[
+                            'return_address_name'
+                        ]
+                        ?? ''
+                    )
+                ),
+                trim(
+                    (string) (
+                        $policy[
+                            'return_address_text'
+                        ]
+                        ?? ''
+                    )
+                ),
+            ],
+            static fn (string $value): bool =>
+                $value !== ''
+        );
+
+        $returnAddress = ! empty($addressParts)
+            ? implode("\n", $addressParts)
+            : null;
+
+        $instructions = trim(
+            (string) (
+                $policy['return_instructions']
+                ?? ''
+            )
+        );
+
+        if ($instructions === '') {
+            $instructions =
+                'Include the return authorization with the merchandise.';
+        }
+
+        $instructions .=
+            "\n\nWrite "
+            . $rmaNumber
+            . ' clearly on the outside of the package. '
+            . 'Send only the approved merchandise before '
+            . $expiresAt->format('F j, Y')
+            . '.';
+
+        $shippingResponsibility =
+            (int) (
+                $policy[
+                    'customer_pays_return_shipping'
+                ]
+                ?? 1
+            ) === 1
+                ? 'customer'
+                : 'store';
+
+        $this->returns->issueAuthorization(
+            $returnId,
+            $rmaNumber,
+            $issuedAt->format('Y-m-d H:i:s'),
+            $expiresAt->format('Y-m-d H:i:s'),
+            $returnAddress,
+            $instructions,
+            $shippingResponsibility
+        );
+
+        return [
+            'rma_number' => $rmaNumber,
+            'issued_at' =>
+                $issuedAt->format('Y-m-d H:i:s'),
+            'expires_at' =>
+                $expiresAt->format('Y-m-d H:i:s'),
+            'expires_display' =>
+                $expiresAt->format('F j, Y'),
+        ];
     }
 
     private function generateReturnNumber(): string

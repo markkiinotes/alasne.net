@@ -10,6 +10,7 @@ use App\Controllers\Admin\InventoryController;
 use App\Controllers\Admin\OrderController;
 use App\Controllers\Admin\PaymentMethodController;
 use App\Controllers\Admin\ReturnController;
+use App\Controllers\Admin\ReturnPolicyController;
 use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
 use App\Controllers\Admin\RoleController;
@@ -23,6 +24,7 @@ use App\Controllers\CheckoutController;
 use App\Controllers\CustomerReturnController;
 use App\Controllers\HomeController;
 use App\Controllers\OrderTrackingController;
+use App\Controllers\ReturnPolicyPageController;
 use App\Controllers\ReturnTrackingController;
 use App\Controllers\StorefrontController;
 
@@ -271,6 +273,23 @@ $router
     ->middleware('auth')
     ->middleware('permission:stores.manage');
 
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/return-policy',
+        [ReturnPolicyController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/return-policy',
+        [ReturnPolicyController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
 $router
     ->get('/admin/stores/{id}/edit', [StoreController::class, 'edit'])
     ->middleware('auth')
@@ -364,6 +383,14 @@ $router
     ->post(
         '/admin/orders/{order_id}/returns',
         [ReturnController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/returns/{id}/authorization',
+        [ReturnController::class, 'authorization']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');
@@ -583,6 +610,12 @@ $router->get(
 
 
 
+
+$router->get(
+    '/store/{store_slug}/returns/policy',
+    [ReturnPolicyPageController::class, 'show']
+);
+
 $router->get(
     '/store/{store_slug}/returns/request',
     [CustomerReturnController::class, 'show']
@@ -601,6 +634,11 @@ $router->post(
 $router->get(
     '/store/{store_slug}/returns/request/success/{token}',
     [CustomerReturnController::class, 'success']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/authorization',
+    [ReturnTrackingController::class, 'authorization']
 );
 
 $router->get(

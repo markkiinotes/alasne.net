@@ -264,6 +264,45 @@ class ReturnController extends Controller
         );
     }
 
+
+    public function authorization(Request $request)
+    {
+        $returnId = (int) $request->route('id');
+
+        $return = $this->returns->find(
+            $returnId
+        );
+
+        if (! $return) {
+            http_response_code(404);
+
+            return '404 - Return not found';
+        }
+
+        if (empty($return['rma_number'])) {
+            $_SESSION['returns_error'] =
+                'Approve the return before printing its authorization.';
+
+            $this->response->redirect(
+                '/admin/returns/' . $returnId
+            );
+
+            return;
+        }
+
+        return $this->view(
+            'admin.returns.authorization',
+            [
+                'title' =>
+                    'Return Authorization '
+                    . $return['rma_number'],
+                'return' => $return,
+                'items' =>
+                    $this->returns->items($returnId),
+            ]
+        );
+    }
+
     public function approve(Request $request)
     {
         $returnId = (int) $request->route('id');

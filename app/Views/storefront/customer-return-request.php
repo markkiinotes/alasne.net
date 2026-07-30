@@ -10,6 +10,8 @@ $escape = static fn (mixed $value): string =>
     );
 
 $old = $old ?? [];
+$policy = $policy ?? [];
+$eligibility = $eligibility ?? null;
 
 $oldQuantities = is_array(
     $old['quantities'] ?? null
@@ -117,7 +119,7 @@ $oldQuantities = is_array(
 .customer-return-order {
     display: grid;
     grid-template-columns:
-        repeat(3, minmax(0, 1fr));
+        repeat(4, minmax(0, 1fr));
     gap: 14px;
     margin-bottom: 22px;
 }
@@ -215,9 +217,64 @@ $oldQuantities = is_array(
         </div>
     <?php endif; ?>
 
-    <?php if (empty($order)): ?>
+    <?php if (
+        empty($order)
+        && (int) (
+            $policy['is_enabled'] ?? 0
+        ) !== 1
+    ): ?>
+        <section class="customer-return-card">
+            <h2>Customer Returns Are Unavailable</h2>
+
+            <p>
+                This store is not currently accepting
+                customer return requests. Existing
+                returns can still be tracked.
+            </p>
+
+            <div class="customer-return-actions">
+                <a
+                    href="/store/<?= $escape(
+                        $store['slug']
+                    ) ?>/returns/policy"
+                    class="customer-return-secondary"
+                >
+                    View Return Policy
+                </a>
+
+                <a
+                    href="/store/<?= $escape(
+                        $store['slug']
+                    ) ?>/returns/track"
+                    class="customer-return-secondary"
+                >
+                    Track Existing Return
+                </a>
+            </div>
+        </section>
+    <?php elseif (empty($order)): ?>
         <section class="customer-return-card">
             <h2>Find Your Order</h2>
+
+            <p class="customer-return-note">
+                <?= $escape(
+                    $policy['policy_title']
+                    ?? 'Return Policy'
+                ) ?>
+                · Requests must be submitted within
+                <?= $escape(
+                    $policy['return_window_days']
+                    ?? 30
+                ) ?>
+                days of the order date.
+                <a
+                    href="/store/<?= $escape(
+                        $store['slug']
+                    ) ?>/returns/policy"
+                >
+                    View full policy
+                </a>
+            </p>
 
             <form
                 method="POST"
@@ -350,6 +407,19 @@ $oldQuantities = is_array(
                                     )
                                 )
                             )
+                        ) ?>
+                    </strong>
+                </article>
+
+                <article class="customer-return-stat">
+                    <span>Return Deadline</span>
+
+                    <strong>
+                        <?= $escape(
+                            $eligibility[
+                                'deadline_display'
+                            ]
+                            ?? '—'
                         ) ?>
                     </strong>
                 </article>
@@ -500,8 +570,18 @@ $oldQuantities = is_array(
                                 'wrong_item' => 'Wrong Item',
                                 'not_as_described' =>
                                     'Not as Described',
-                                'changed_mind' =>
-                                    'Changed Mind',
+                                ...(
+                                    (int) (
+                                        $policy[
+                                            'allow_changed_mind'
+                                        ] ?? 0
+                                    ) === 1
+                                        ? [
+                                            'changed_mind' =>
+                                                'Changed Mind',
+                                        ]
+                                        : []
+                                ),
                                 'other' => 'Other',
                             ]
                             as $value => $text
@@ -557,6 +637,23 @@ $oldQuantities = is_array(
                     ) ?></textarea>
                 </div>
             </div>
+
+            <p class="customer-return-note">
+                <?= (int) (
+                    $policy[
+                        'customer_pays_return_shipping'
+                    ] ?? 1
+                ) === 1
+                    ? 'Return shipping is the customer’s responsibility unless the store provides different instructions after approval.'
+                    : 'The store is responsible for approved return shipping. Wait for instructions before sending merchandise.' ?>
+                <?= (int) (
+                    $policy[
+                        'auto_approve_customer_requests'
+                    ] ?? 0
+                ) === 1
+                    ? ' Eligible requests are automatically approved.'
+                    : ' A store review is required before the return is approved.' ?>
+            </p>
 
             <div
                 class="customer-return-actions"

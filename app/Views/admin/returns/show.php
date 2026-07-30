@@ -12,7 +12,7 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
 
 <style>
 .return-show-page { display:grid; gap:20px; }
-.return-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.return-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
 .return-panel { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:22px; box-shadow:0 10px 26px rgba(15,23,42,.06); }
 .return-status { display:inline-flex; padding:6px 10px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:12px; font-weight:800; }
 .return-status.completed { background:#dcfce7; color:#166534; }
@@ -37,6 +37,15 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
         <p>Order <a class="table-link" href="/admin/orders/<?= $escape($return['order_id']) ?>"><?= $escape($return['order_number']) ?></a> · <?= $escape($return['customer_name'] ?? 'Customer') ?></p>
         <div class="table-actions">
             <a href="/admin/returns" class="button-muted">All Returns</a>
+            <?php if (! empty($return['rma_number'])): ?>
+                <a
+                    href="/admin/returns/<?= $escape($return['id']) ?>/authorization"
+                    class="button-primary"
+                    target="_blank"
+                >
+                    Print Authorization
+                </a>
+            <?php endif; ?>
             <a href="/admin/orders/<?= $escape($return['order_id']) ?>" class="button-muted">View Order</a>
         </div>
     </section>
@@ -48,7 +57,65 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
         <article class="return-panel"><small>Status</small><h2><span class="return-status <?= $escape($status) ?>"><?= $escape($label($status)) ?></span></h2><p>Refund: <?= $escape($label($return['refund_status'])) ?><br>Source: <?= $escape(($return['request_source'] ?? 'admin') === 'customer' ? 'Customer Self-Service' : 'Mission Control') ?></p></article>
         <article class="return-panel"><small>Requested Merchandise</small><h2>$<?= number_format((float)$return['requested_refund_amount'],2) ?> <?= $escape($currency) ?></h2><p>Reason: <?= $escape($label($return['reason_code'])) ?></p></article>
         <article class="return-panel"><small>Approved Merchandise</small><h2>$<?= number_format((float)$return['approved_refund_amount'],2) ?> <?= $escape($currency) ?></h2><p>Refunded: $<?= number_format((float)($return['refunded_amount'] ?? 0), 2) ?> <?= $escape($currency) ?><br>Transaction: <?= !empty($return['refund_transaction_id']) ? '#'.$escape($return['refund_transaction_id']) : '—' ?></p></article>
+        <article class="return-panel"><small>Return Authorization</small><h2><?= $escape($return['rma_number'] ?? 'Not Issued') ?></h2><p>Issued: <?= $escape($return['authorization_issued_at'] ?? '—') ?><br>Expires: <?= $escape($return['authorization_expires_at'] ?? '—') ?></p></article>
     </section>
+
+
+    <?php if (! empty($return['rma_number'])): ?>
+        <section class="return-panel">
+            <h2>Shipping Authorization</h2>
+
+            <div class="return-action-grid">
+                <div>
+                    <h3>Return Address</h3>
+
+                    <p>
+                        <?= ! empty(
+                            $return[
+                                'return_address_snapshot'
+                            ]
+                        )
+                            ? nl2br(
+                                $escape(
+                                    $return[
+                                        'return_address_snapshot'
+                                    ]
+                                )
+                            )
+                            : 'No mailing address was configured when this authorization was issued.' ?>
+                    </p>
+                </div>
+
+                <div>
+                    <h3>Shipping Responsibility</h3>
+
+                    <p>
+                        <?= (
+                            $return[
+                                'return_shipping_responsibility_snapshot'
+                            ]
+                            ?? 'customer'
+                        ) === 'store'
+                            ? 'Store responsibility'
+                            : 'Customer responsibility' ?>
+                    </p>
+                </div>
+            </div>
+
+            <h3>Customer Instructions</h3>
+
+            <p>
+                <?= nl2br(
+                    $escape(
+                        $return[
+                            'return_instructions_snapshot'
+                        ]
+                        ?? 'No instructions were recorded.'
+                    )
+                ) ?>
+            </p>
+        </section>
+    <?php endif; ?>
 
     <section class="return-panel">
         <h2>Returned Items</h2>

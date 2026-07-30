@@ -140,6 +140,83 @@ class ReturnTrackingController extends Controller
         );
     }
 
+
+    public function authorization(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $returnNumber = strtoupper(
+            trim(
+                (string) $this->request->input(
+                    'return_number'
+                )
+            )
+        );
+
+        $customerEmail = strtolower(
+            trim(
+                (string) $this->request->input(
+                    'email'
+                )
+            )
+        );
+
+        if (! $this->csrf->validate(
+            (string) $this->request->input(
+                '_csrf_token'
+            )
+        )) {
+            http_response_code(403);
+
+            return 'Security token expired. Return to the tracking page and try again.';
+        }
+
+        $return =
+            $this->returns
+                ->findPublicByCredentials(
+                    (string) $store['slug'],
+                    $returnNumber,
+                    $customerEmail
+                );
+
+        $this->csrf->regenerate();
+
+        if (
+            ! $return
+            || empty($return['rma_number'])
+            || in_array(
+                $return['status'],
+                ['requested', 'cancelled'],
+                true
+            )
+        ) {
+            http_response_code(404);
+
+            return 'Return authorization is not available.';
+        }
+
+        return $this->view(
+            'storefront.return-authorization',
+            [
+                'title' =>
+                    'Return Authorization '
+                    . $return['rma_number'],
+                'store' => $store,
+                'return' => $return,
+                'items' =>
+                    $this->returns->publicItems(
+                        (int) $return['id']
+                    ),
+            ]
+        );
+    }
+
     private function storeFromRequest(
         Request $request
     ): ?array {

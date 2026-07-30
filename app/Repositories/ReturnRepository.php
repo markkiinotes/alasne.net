@@ -52,6 +52,7 @@ class ReturnRepository
             $sql .= "
                 AND (
                     r.return_number LIKE :query_return
+                    OR r.rma_number LIKE :query_rma
                     OR o.order_number LIKE :query_order
                     OR c.email LIKE :query_email
                     OR CONCAT(
@@ -65,6 +66,7 @@ class ReturnRepository
             $likeQuery = '%' . $query . '%';
 
             $parameters['query_return'] = $likeQuery;
+            $parameters['query_rma'] = $likeQuery;
             $parameters['query_order'] = $likeQuery;
             $parameters['query_email'] = $likeQuery;
             $parameters['query_customer'] = $likeQuery;
@@ -127,6 +129,7 @@ class ReturnRepository
                 o.amount_refunded,
                 o.grand_total,
                 s.name AS store_name,
+                s.slug AS store_slug,
                 CONCAT(
                     c.first_name,
                     ' ',
@@ -495,6 +498,61 @@ class ReturnRepository
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+
+    public function issueAuthorization(
+        int $returnId,
+        string $rmaNumber,
+        string $issuedAt,
+        string $expiresAt,
+        ?string $returnAddress,
+        string $instructions,
+        string $shippingResponsibility
+    ): void {
+        $stmt = $this->db->prepare("
+            UPDATE returns
+            SET
+                rma_number = COALESCE(
+                    rma_number,
+                    :rma_number
+                ),
+                authorization_issued_at = COALESCE(
+                    authorization_issued_at,
+                    :issued_at
+                ),
+                authorization_expires_at = COALESCE(
+                    authorization_expires_at,
+                    :expires_at
+                ),
+                return_address_snapshot = COALESCE(
+                    return_address_snapshot,
+                    :return_address
+                ),
+                return_instructions_snapshot = COALESCE(
+                    return_instructions_snapshot,
+                    :instructions
+                ),
+                return_shipping_responsibility_snapshot =
+                    COALESCE(
+                        return_shipping_responsibility_snapshot,
+                        :shipping_responsibility
+                    ),
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $returnId,
+            'rma_number' => $rmaNumber,
+            'issued_at' => $issuedAt,
+            'expires_at' => $expiresAt,
+            'return_address' =>
+                $this->nullable($returnAddress),
+            'instructions' => $instructions,
+            'shipping_responsibility' =>
+                $shippingResponsibility,
+        ]);
     }
 
     public function approve(
@@ -976,6 +1034,7 @@ class ReturnRepository
             SELECT
                 r.id,
                 r.return_number,
+                r.rma_number,
                 r.status,
                 r.reason_code,
                 r.currency,
@@ -984,6 +1043,11 @@ class ReturnRepository
                 r.refund_status,
                 r.requested_at,
                 r.approved_at,
+                r.authorization_issued_at,
+                r.authorization_expires_at,
+                r.return_address_snapshot,
+                r.return_instructions_snapshot,
+                r.return_shipping_responsibility_snapshot,
                 r.received_at,
                 r.completed_at,
                 r.cancelled_at,

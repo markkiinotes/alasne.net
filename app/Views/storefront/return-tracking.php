@@ -127,7 +127,7 @@ $eventMessages = [
 .return-track-summary {
     display: grid;
     grid-template-columns:
-        repeat(4, minmax(0, 1fr));
+        repeat(5, minmax(0, 1fr));
     gap: 14px;
 }
 
@@ -284,6 +284,16 @@ $eventMessages = [
             >
                 Start a New Return
             </a>
+
+            <a
+                href="/store/<?= $escape(
+                    $store['slug']
+                ) ?>/returns/policy"
+                class="return-track-secondary"
+                style="margin-left:8px;"
+            >
+                Return Policy
+            </a>
         </div>
     </section>
 
@@ -340,8 +350,127 @@ $eventMessages = [
                         ) ?>
                     </strong>
                 </article>
+
+                <article class="return-track-stat">
+                    <span>RMA</span>
+
+                    <strong>
+                        <?= $escape(
+                            $return['rma_number']
+                            ?? 'Pending Approval'
+                        ) ?>
+                    </strong>
+                </article>
             </div>
         </section>
+
+
+        <?php if (
+            ! empty($return['rma_number'])
+            && ! in_array(
+                $return['status'],
+                ['requested', 'cancelled'],
+                true
+            )
+        ): ?>
+            <section class="return-track-panel">
+                <h2>Return Authorization</h2>
+
+                <p>
+                    <strong>RMA:</strong>
+                    <?= $escape(
+                        $return['rma_number']
+                    ) ?>
+                    <br>
+
+                    <strong>Authorization Expires:</strong>
+                    <?= $escape(
+                        $return[
+                            'authorization_expires_at'
+                        ]
+                        ?? '—'
+                    ) ?>
+                    <br>
+
+                    <strong>Return Shipping:</strong>
+                    <?= (
+                        $return[
+                            'return_shipping_responsibility_snapshot'
+                        ]
+                        ?? 'customer'
+                    ) === 'store'
+                        ? 'Store responsibility'
+                        : 'Customer responsibility' ?>
+                </p>
+
+                <?php if (! empty(
+                    $return['return_address_snapshot']
+                )): ?>
+                    <h3>Return Address</h3>
+
+                    <p>
+                        <?= nl2br(
+                            $escape(
+                                $return[
+                                    'return_address_snapshot'
+                                ]
+                            )
+                        ) ?>
+                    </p>
+                <?php endif; ?>
+
+                <h3>Instructions</h3>
+
+                <p>
+                    <?= nl2br(
+                        $escape(
+                            $return[
+                                'return_instructions_snapshot'
+                            ]
+                            ?? 'Follow the store’s instructions before sending merchandise.'
+                        )
+                    ) ?>
+                </p>
+
+                <form
+                    method="POST"
+                    action="/store/<?= $escape(
+                        $store['slug']
+                    ) ?>/returns/authorization"
+                >
+                    <input
+                        type="hidden"
+                        name="_csrf_token"
+                        value="<?= $escape(
+                            $csrf_token
+                        ) ?>"
+                    >
+
+                    <input
+                        type="hidden"
+                        name="return_number"
+                        value="<?= $escape(
+                            $return_number
+                        ) ?>"
+                    >
+
+                    <input
+                        type="hidden"
+                        name="email"
+                        value="<?= $escape(
+                            $customer_email
+                        ) ?>"
+                    >
+
+                    <button
+                        type="submit"
+                        class="return-track-button"
+                    >
+                        Print Return Authorization
+                    </button>
+                </form>
+            </section>
+        <?php endif; ?>
 
         <section class="return-track-panel">
             <h2>Returned Items</h2>

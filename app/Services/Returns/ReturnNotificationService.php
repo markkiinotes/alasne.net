@@ -152,7 +152,7 @@ class ReturnNotificationService
                     . $returnNumber,
                 'heading' => 'Your return was approved',
                 'message' =>
-                    'Your return was approved. Send or bring back only the approved merchandise.',
+                    'Your return was approved and an RMA was issued. Follow the authorization instructions before sending merchandise.',
             ],
 
             'received' => [
@@ -260,6 +260,89 @@ class ReturnNotificationService
             )
         );
 
+        $authorizationHtml = '';
+
+        if (! empty($return['rma_number'])) {
+            $authorizationHtml = '
+                <div style="padding:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;margin:22px 0;">
+                    <strong>RMA:</strong>
+                    '
+                    . htmlspecialchars(
+                        (string) $return['rma_number']
+                    )
+                    . '
+                    <br>
+
+                    <strong>Authorization Expires:</strong>
+                    '
+                    . htmlspecialchars(
+                        (string) (
+                            $return[
+                                'authorization_expires_at'
+                            ]
+                            ?? 'Not specified'
+                        )
+                    )
+                    . '
+                    <br>
+
+                    <strong>Return Shipping:</strong>
+                    '
+                    . htmlspecialchars(
+                        (
+                            $return[
+                                'return_shipping_responsibility_snapshot'
+                            ]
+                            ?? 'customer'
+                        ) === 'store'
+                            ? 'Store responsibility'
+                            : 'Customer responsibility'
+                    )
+                    . '
+
+                    '
+                    . (
+                        ! empty(
+                            $return[
+                                'return_address_snapshot'
+                            ]
+                        )
+                            ? '<p><strong>Return Address:</strong><br>'
+                                . nl2br(
+                                    htmlspecialchars(
+                                        (string) $return[
+                                            'return_address_snapshot'
+                                        ]
+                                    )
+                                )
+                                . '</p>'
+                            : ''
+                    )
+                    . '
+
+                    '
+                    . (
+                        ! empty(
+                            $return[
+                                'return_instructions_snapshot'
+                            ]
+                        )
+                            ? '<p><strong>Instructions:</strong><br>'
+                                . nl2br(
+                                    htmlspecialchars(
+                                        (string) $return[
+                                            'return_instructions_snapshot'
+                                        ]
+                                    )
+                                )
+                                . '</p>'
+                            : ''
+                    )
+                    . '
+                </div>
+            ';
+        }
+
         return '
             <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;max-width:680px;margin:0 auto;">
                 <h1 style="margin-bottom:8px;">
@@ -329,6 +412,10 @@ class ReturnNotificationService
                     )
                     . '
                 </div>
+
+                '
+                . $authorizationHtml
+                . '
 
                 <table style="width:100%;border-collapse:collapse;">
                     <thead>
@@ -412,6 +499,57 @@ class ReturnNotificationService
                 );
         }
 
+        $authorizationText = '';
+
+        if (! empty($return['rma_number'])) {
+            $authorizationText =
+                "\nRMA: "
+                . $return['rma_number']
+                . "\nAuthorization Expires: "
+                . (
+                    $return[
+                        'authorization_expires_at'
+                    ]
+                    ?? 'Not specified'
+                )
+                . "\nReturn Shipping: "
+                . (
+                    (
+                        $return[
+                            'return_shipping_responsibility_snapshot'
+                        ]
+                        ?? 'customer'
+                    ) === 'store'
+                        ? 'Store responsibility'
+                        : 'Customer responsibility'
+                )
+                . (
+                    ! empty(
+                        $return[
+                            'return_address_snapshot'
+                        ]
+                    )
+                        ? "\nReturn Address:\n"
+                            . $return[
+                                'return_address_snapshot'
+                            ]
+                        : ''
+                )
+                . (
+                    ! empty(
+                        $return[
+                            'return_instructions_snapshot'
+                        ]
+                    )
+                        ? "\nInstructions:\n"
+                            . $return[
+                                'return_instructions_snapshot'
+                            ]
+                        : ''
+                )
+                . "\n";
+        }
+
         return $message['heading']
             . "\n\n"
             . $message['message']
@@ -442,7 +580,8 @@ class ReturnNotificationService
                     )
                 )
             )
-            . "\n\n"
+            . $authorizationText
+            . "\n"
             . "Items:\n"
             . implode("\n", $lines)
             . "\n\n"
