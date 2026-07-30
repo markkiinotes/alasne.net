@@ -2,13 +2,541 @@
 
 declare(strict_types=1);
 
-use App\Core\Router;
-use App\Controllers\HomeController;
+use App\Controllers\Admin\CategoryController;
+use App\Controllers\Admin\CustomerController;
 use App\Controllers\Admin\DashboardController;
+use App\Controllers\Admin\EmailOutboxController;
+use App\Controllers\Admin\InventoryController;
+use App\Controllers\Admin\OrderController;
+use App\Controllers\Admin\PaymentMethodController;
+use App\Controllers\Admin\PermissionController;
+use App\Controllers\Admin\ProductController;
+use App\Controllers\Admin\RoleController;
+use App\Controllers\Admin\ShippingMethodController;
+use App\Controllers\Admin\TaxRuleController;
+use App\Controllers\Admin\StoreController;
+use App\Controllers\Admin\UserController;
+use App\Controllers\AuthController;
+use App\Controllers\CartController;
+use App\Controllers\CheckoutController;
+use App\Controllers\HomeController;
+use App\Controllers\OrderTrackingController;
+use App\Controllers\StorefrontController;
 
 $router = $app->router;
 
+$router->get('/login', [AuthController::class, 'showLogin']);
+$router->post('/login', [AuthController::class, 'login']);
+$router->get('/logout', [AuthController::class, 'logout']);
+
 $router->get('/', [HomeController::class, 'index']);
-$router->get('/admin', [DashboardController::class, 'index']);
+
+$router
+    ->get('/admin', [DashboardController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get('/admin/users/{id}/edit', [UserController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:users.manage');
+
+$router
+    ->post('/admin/users/{id}', [UserController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:users.manage');
+
+$router
+    ->get('/admin/users', [UserController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:users.manage');
+
+$router
+    ->get('/admin/users/create', [UserController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:users.manage');
+
+$router
+    ->post('/admin/users', [UserController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:users.manage');
+
+$router
+    ->get('/admin/roles', [RoleController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:roles.manage');
+
+$router
+    ->get('/admin/roles/create', [RoleController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:roles.manage');
+
+$router
+    ->post('/admin/roles', [RoleController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:roles.manage');
+
+$router
+    ->get('/admin/roles/{id}/edit', [RoleController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:roles.manage');
+
+$router
+    ->post('/admin/roles/{id}', [RoleController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:roles.manage');
+
+$router
+    ->get('/admin/permissions', [PermissionController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:permissions.manage');
+
+$router
+    ->get('/admin/stores', [StoreController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get('/admin/stores/create', [StoreController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post('/admin/stores', [StoreController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/payment-methods',
+        [PaymentMethodController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/payment-methods/create',
+        [PaymentMethodController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/payment-methods',
+        [PaymentMethodController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/payment-methods/{id}/edit',
+        [PaymentMethodController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/payment-methods/{id}',
+        [PaymentMethodController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/payment-methods/{id}/toggle',
+        [PaymentMethodController::class, 'toggle']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/shipping-methods',
+        [ShippingMethodController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/shipping-methods/create',
+        [ShippingMethodController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/shipping-methods',
+        [ShippingMethodController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/shipping-methods/{id}/edit',
+        [ShippingMethodController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/shipping-methods/{id}',
+        [ShippingMethodController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/shipping-methods/{id}/toggle',
+        [ShippingMethodController::class, 'toggle']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/shipping-methods/{id}/delete',
+        [ShippingMethodController::class, 'destroy']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/tax-rules',
+        [TaxRuleController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/tax-rules/create',
+        [TaxRuleController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/tax-rules',
+        [TaxRuleController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/tax-rules/{id}/edit',
+        [TaxRuleController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/tax-rules/{id}',
+        [TaxRuleController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/tax-rules/{id}/toggle',
+        [TaxRuleController::class, 'toggle']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/tax-rules/{id}/delete',
+        [TaxRuleController::class, 'destroy']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get('/admin/stores/{id}/edit', [StoreController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post('/admin/stores/{id}', [StoreController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get('/admin/stores/{id}', [StoreController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get('/admin/products', [ProductController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/products/create', [ProductController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/products', [ProductController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/products/{id}/edit', [ProductController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/products/{id}', [ProductController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/products/{id}', [ProductController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/customers', [CustomerController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
+$router
+    ->get('/admin/customers/create', [CustomerController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
+$router
+    ->post('/admin/customers', [CustomerController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
+$router
+    ->get('/admin/customers/{id}/edit', [CustomerController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
+$router
+    ->post('/admin/customers/{id}', [CustomerController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
+$router
+    ->get('/admin/customers/{id}', [CustomerController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
+$router
+    ->get('/admin/orders', [OrderController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get('/admin/orders/create', [OrderController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post('/admin/orders', [OrderController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get('/admin/orders/export', [OrderController::class, 'export'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/orders/{id}/packing-slip',
+        [OrderController::class, 'packingSlip']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/orders/{id}/invoice',
+        [OrderController::class, 'invoice']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get('/admin/orders/{id}', [OrderController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{id}/refund',
+        [OrderController::class, 'refund']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{id}/status',
+        [OrderController::class, 'updateStatus']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{id}/fulfillment',
+        [OrderController::class, 'updateFulfillment']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{id}/events',
+        [OrderController::class, 'addEvent']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get('/admin/inventory', [InventoryController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/inventory/adjust', [InventoryController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/inventory/adjust', [InventoryController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/categories', [CategoryController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/categories/create', [CategoryController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/categories', [CategoryController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/categories/{id}/edit', [CategoryController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/categories/{id}', [CategoryController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/email-outbox', [EmailOutboxController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/email-outbox/send-pending',
+        [EmailOutboxController::class, 'sendPending']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get('/admin/email-outbox/{id}', [EmailOutboxController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router->get(
+    '/store/{store_slug}/product/{product_slug}',
+    [StorefrontController::class, 'product']
+);
+
+$router->get(
+    '/store/{store_slug}/category/{category_slug}',
+    [StorefrontController::class, 'category']
+);
+
+$router->get(
+    '/store/{store_slug}/cart',
+    [CartController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/cart/add',
+    [CartController::class, 'add']
+);
+
+$router->post(
+    '/store/{store_slug}/cart/update',
+    [CartController::class, 'update']
+);
+
+$router->post(
+    '/store/{store_slug}/cart/remove',
+    [CartController::class, 'remove']
+);
+
+$router->get(
+    '/store/{store_slug}/checkout',
+    [CheckoutController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/checkout',
+    [CheckoutController::class, 'store']
+);
+
+$router->get(
+    '/store/{store_slug}/checkout/success',
+    [CheckoutController::class, 'success']
+);
+
+$router->get(
+    '/store/{store_slug}/track',
+    [OrderTrackingController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/track',
+    [OrderTrackingController::class, 'lookup']
+);
+
+$router->get(
+    '/store/{store_slug}/receipt',
+    [OrderTrackingController::class, 'receipt']
+);
+
+$router->get(
+    '/store/{slug}',
+    [StorefrontController::class, 'show']
+);
 
 return $router;

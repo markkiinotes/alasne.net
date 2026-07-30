@@ -11,8 +11,8 @@ class HomeController extends Controller
     public function index()
     {
         return $this->view('home.index', [
-            'title' => 'Welcome to Alasne Framework',
-            'message' => 'The custom PHP framework is now rendering views.',
+            'title' => config('app.name'),
+            'message' => 'Config Repository is working.',
         ]);
     }
 }

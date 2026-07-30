@@ -1,0 +1,153 @@
+<?php
+
+declare(strict_types=1);
+
+$app = require __DIR__ . '/bootstrap/app.php';
+
+$command = $argv[1] ?? null;
+
+if ($command === null) {
+    echo "Alasne Platform CLI\n";
+    echo "Usage: php alasne migrate\n";
+    exit;
+}
+
+match ($command) {
+    'migrate' => runMigrations(),
+    'seed:admin' => seedAdmin(),
+    'seed:rbac' => seedRbac(),
+    default => printUnknownCommand($command),
+};
+
+function runMigrations(): void
+{
+    $runner = app()->container->make(\App\Core\MigrationRunner::class);
+
+    $runner->run();
+}
+
+function printUnknownCommand(string $command): void
+{
+    echo "Unknown command: {$command}\n";
+}
+
+function seedAdmin(): void
+{
+    $users = app()->container->make(\App\Repositories\UserRepository::class);
+
+    $email = 'admin@alasne.local';
+    $password = 'Password123!';
+
+    if ($users->findByEmail($email)) {
+        echo "Admin user already exists.\n";
+        return;
+    }
+
+    $users->create([
+        'name' => 'Commander Mark',
+        'email' => $email,
+        'password' => password_hash($password, PASSWORD_DEFAULT),
+        'role' => 'super_admin',
+        'status' => 'active',
+    ]);
+
+    echo "Admin user created.\n";
+    echo "Email: {$email}\n";
+    echo "Password: {$password}\n";
+}
+
+function seedRbac(): void
+{
+    $db = app()->container->make(PDO::class);
+
+    $adminEmail = 'admin@alasne.local';
+
+    $db->beginTransaction();
+
+    try {
+        // Create super_admin role
+        $stmt = $db->prepare("
+            INSERT IGNORE INTO roles (name, slug, description)
+            VALUES (:name, :slug, :description)
+        ");
+
+        $stmt->execute([
+            'name' => 'Super Administrator',
+            'slug' => 'super_admin',
+            'description' => 'Full access to the Alasne Platform.',
+        ]);
+
+        // Create permissions
+        $permissions = [
+            ['Mission Control View', 'mission_control.view', 'View Mission Control dashboard.'],
+            ['Manage Users', 'users.manage', 'Create, edit, and manage users.'],
+            ['Manage Roles', 'roles.manage', 'Create, edit, and manage roles.'],
+            ['Manage Permissions', 'permissions.manage', 'Create, edit, and manage permissions.'],
+            ['Manage Stores', 'stores.manage', 'Create and manage storefronts.'],
+            ['Manage Products', 'products.manage', 'Create and manage products.'],
+            ['Manage Orders', 'orders.manage', 'View and manage orders.'],
+            ['Manage Customers', 'customers.manage', 'View and manage customers.'],
+            ['Manage AI Engine', 'ai.manage', 'Manage AI tools and automation.'],
+            ['Manage Settings', 'settings.manage', 'Manage platform settings.'],
+        ];
+
+        $stmt = $db->prepare("
+            INSERT IGNORE INTO permissions (name, slug, description)
+            VALUES (:name, :slug, :description)
+        ");
+
+        foreach ($permissions as [$name, $slug, $description]) {
+            $stmt->execute([
+                'name' => $name,
+                'slug' => $slug,
+                'description' => $description,
+            ]);
+        }
+
+        // Get role ID
+        $stmt = $db->prepare("SELECT id FROM roles WHERE slug = :slug LIMIT 1");
+        $stmt->execute(['slug' => 'super_admin']);
+        $roleId = (int) $stmt->fetchColumn();
+
+        // Attach all permissions to super_admin
+        $stmt = $db->prepare("
+            INSERT IGNORE INTO permission_role (permission_id, role_id)
+            SELECT id, :role_id
+            FROM permissions
+        ");
+
+        $stmt->execute([
+            'role_id' => $roleId,
+        ]);
+
+        // Find admin user
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
+        $stmt->execute(['email' => $adminEmail]);
+        $userId = (int) $stmt->fetchColumn();
+
+        if (! $userId) {
+            throw new RuntimeException("Admin user not found. Run php alasne seed:admin first.");
+        }
+
+        // Attach role to admin user
+        $stmt = $db->prepare("
+            INSERT IGNORE INTO role_user (user_id, role_id)
+            VALUES (:user_id, :role_id)
+        ");
+
+        $stmt->execute([
+            'user_id' => $userId,
+            'role_id' => $roleId,
+        ]);
+
+        $db->commit();
+
+        echo "RBAC seed complete.\n";
+        echo "Role assigned: super_admin\n";
+        echo "User: {$adminEmail}\n";
+    } catch (Throwable $e) {
+        $db->rollBack();
+
+        echo "RBAC seed failed: " . $e->getMessage() . "\n";
+    }
+}

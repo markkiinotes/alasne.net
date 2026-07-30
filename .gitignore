@@ -1,12 +1,16 @@
 # Environment
 .env
+.env.*
+|.env.example
 
 # Composer
 /vendor/
+/node_modules/
 
 # Logs and cache
 /storage/logs/*
 /storage/cache/*
+/storage/sessions/*
 
 # Keep folders
 !/storage/logs/.gitkeep
@@ -25,3 +29,5 @@ Thumbs.db
 # XAMPP/local
 *.log
 *.tmp
+*.sql
+*.zip

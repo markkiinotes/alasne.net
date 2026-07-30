@@ -6,6 +6,8 @@ namespace App\Core;
 
 class Request
 {
+    protected array $routeParams = [];
+
     public function method(): string
     {
         return $_SERVER['REQUEST_METHOD'];
@@ -27,19 +29,29 @@ class Request
     {
         return array_merge($_GET, $_POST);
     }
-	
-	public function isPost(): bool
-	{
-		return $this->method() === 'POST';
-	}
 
-	public function isGet(): bool
-	{
-		return $this->method() === 'GET';
-	}
+    public function isPost(): bool
+    {
+        return $this->method() === 'POST';
+    }
 
-	public function has(string $key): bool
-	{
-		return isset($_POST[$key]) || isset($_GET[$key]);
-	}
+    public function isGet(): bool
+    {
+        return $this->method() === 'GET';
+    }
+
+    public function has(string $key): bool
+    {
+        return isset($_POST[$key]) || isset($_GET[$key]);
+    }
+
+    public function setRouteParams(array $params): void
+    {
+        $this->routeParams = $params;
+    }
+
+    public function route(string $key, mixed $default = null): mixed
+    {
+        return $this->routeParams[$key] ?? $default;
+    }
 }

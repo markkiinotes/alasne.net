@@ -1,0 +1,89 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controllers\Admin;
+
+use App\Core\Controller;
+use App\Repositories\ProductRepository;
+use App\Repositories\StoreRepository;
+use App\Services\Auth\CsrfService;
+
+class ProductController extends Controller
+{
+    public function __construct(
+        private ProductRepository $products,
+        private StoreRepository $stores,
+        private CsrfService $csrf
+    ) {
+        parent::__construct();
+    }
+
+    public function index()
+    {
+        return $this->view('admin.products.index', [
+            'title' => 'Products',
+            'products' => $this->products->all(),
+            'success' => $_SESSION['products_success'] ?? null,
+            'error' => $_SESSION['products_error'] ?? null,
+        ], 'admin');
+    }
+
+    public function create()
+    {
+        return $this->view('admin.products.create', [
+            'title' => 'Create Product',
+            'stores' => $this->stores->all(),
+            'csrf_token' => $this->csrf->token(),
+            'error' => $_SESSION['products_error'] ?? null,
+        ], 'admin');
+    }
+
+    public function store()
+    {
+        $csrfToken = (string) $this->request->input('_csrf_token');
+
+        if (! $this->csrf->validate($csrfToken)) {
+            $_SESSION['products_error'] = 'Security token expired. Please try again.';
+            $this->response->redirect('/admin/products/create');
+        }
+
+        $storeId = (int) $this->request->input('store_id');
+        $name = trim((string) $this->request->input('name'));
+        $slug = trim((string) $this->request->input('slug'));
+        $sku = trim((string) $this->request->input('sku'));
+        $description = trim((string) $this->request->input('description'));
+        $price = trim((string) $this->request->input('price'));
+        $cost = trim((string) $this->request->input('cost'));
+        $inventoryQuantity = trim((string) $this->request->input('inventory_quantity'));
+        $status = trim((string) $this->request->input('status'));
+
+        if ($storeId <= 0 || $name === '' || $slug === '') {
+            $_SESSION['products_error'] = 'Store, product name, and slug are required.';
+            $this->response->redirect('/admin/products/create');
+        }
+
+        if ($this->products->findByStoreAndSlug($storeId, $slug)) {
+            $_SESSION['products_error'] = 'A product with that slug already exists for this store.';
+            $this->response->redirect('/admin/products/create');
+        }
+
+        $this->products->create([
+            'store_id' => $storeId,
+            'name' => $name,
+            'slug' => $slug,
+            'sku' => $sku,
+            'description' => $description,
+            'price' => $price,
+            'cost' => $cost,
+            'inventory_quantity' => $inventoryQuantity,
+            'status' => $status,
+        ]);
+
+        $this->csrf->regenerate();
+
+        $_SESSION['products_success'] = 'Product created successfully.';
+
+        $this->response->redirect('/admin/products');
+    }
+}
