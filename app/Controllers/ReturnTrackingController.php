@@ -305,6 +305,15 @@ class ReturnTrackingController extends Controller
             return 'Return shipping label is not available.';
         }
 
+        $providerLabel = $shipment['provider_label_pdf_url']
+            ?? $shipment['provider_label_url']
+            ?? null;
+
+        if (! empty($providerLabel)) {
+            $this->response->redirect((string) $providerLabel);
+            return;
+        }
+
         return $this->view(
             'storefront.return-shipping-label',
             [

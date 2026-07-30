@@ -9,6 +9,7 @@ use App\Controllers\Admin\EmailOutboxController;
 use App\Controllers\Admin\InventoryController;
 use App\Controllers\Admin\OrderController;
 use App\Controllers\Admin\PaymentMethodController;
+use App\Controllers\Admin\CarrierIntegrationController;
 use App\Controllers\Admin\ReturnController;
 use App\Controllers\Admin\ReturnPolicyController;
 use App\Controllers\Admin\PermissionController;
@@ -17,8 +18,10 @@ use App\Controllers\Admin\RoleController;
 use App\Controllers\Admin\ShippingMethodController;
 use App\Controllers\Admin\TaxRuleController;
 use App\Controllers\Admin\StoreController;
+use App\Controllers\Admin\StoreCreditController;
 use App\Controllers\Admin\UserController;
 use App\Controllers\AuthController;
+use App\Controllers\CarrierWebhookController;
 use App\Controllers\CartController;
 use App\Controllers\CheckoutController;
 use App\Controllers\CustomerReturnController;
@@ -33,6 +36,12 @@ $router = $app->router;
 $router->get('/login', [AuthController::class, 'showLogin']);
 $router->post('/login', [AuthController::class, 'login']);
 $router->get('/logout', [AuthController::class, 'logout']);
+
+
+$router->post(
+    '/webhooks/carriers/easypost/{store_id}',
+    [CarrierWebhookController::class, 'easyPost']
+);
 
 $router->get('/', [HomeController::class, 'index']);
 
@@ -274,6 +283,23 @@ $router
     ->middleware('permission:stores.manage');
 
 
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/carrier-integration',
+        [CarrierIntegrationController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/carrier-integration',
+        [CarrierIntegrationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
 $router
     ->get(
         '/admin/stores/{store_id}/return-policy',
@@ -365,6 +391,14 @@ $router
     ->middleware('auth')
     ->middleware('permission:customers.manage');
 
+$router
+    ->get(
+        '/admin/customers/{customer_id}/store-credit',
+        [StoreCreditController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
 
 $router
     ->get('/admin/returns', [ReturnController::class, 'index'])
@@ -383,6 +417,23 @@ $router
     ->post(
         '/admin/orders/{order_id}/returns',
         [ReturnController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+
+$router
+    ->post(
+        '/admin/returns/{id}/carrier-rates',
+        [ReturnController::class, 'requestCarrierRates']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/carrier-rates/purchase',
+        [ReturnController::class, 'purchaseCarrierRate']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');

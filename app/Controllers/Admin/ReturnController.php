@@ -6,12 +6,18 @@ namespace App\Controllers\Admin;
 
 use App\Core\Controller;
 use App\Core\Request;
+use App\Repositories\CarrierIntegrationRepository;
 use App\Repositories\ReturnRepository;
+use App\Repositories\ReturnExchangeRepository;
+use App\Repositories\StoreCreditRepository;
+use App\Repositories\ReturnShippingQuoteRepository;
 use App\Repositories\ReturnShippingRepository;
 use App\Repositories\StoreRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Mail\EmailOutboxSender;
+use App\Services\Returns\ReturnCarrierService;
 use App\Services\Returns\ReturnNotificationService;
+use App\Services\Returns\ReturnResolutionService;
 use App\Services\Returns\ReturnService;
 use App\Services\Returns\ReturnShippingNotificationService;
 use App\Services\Returns\ReturnShippingService;
@@ -20,7 +26,13 @@ class ReturnController extends Controller
 {
     public function __construct(
         private ReturnRepository $returns,
+        private ReturnCarrierService $returnCarrierService,
+        private ReturnShippingQuoteRepository $carrierQuotes,
+        private CarrierIntegrationRepository $carrierIntegrations,
         private ReturnService $returnService,
+        private ReturnResolutionService $returnResolutionService,
+        private ReturnExchangeRepository $returnExchanges,
+        private StoreCreditRepository $storeCredits,
         private ReturnShippingService $returnShippingService,
         private ReturnShippingRepository $returnShipments,
         private ReturnShippingNotificationService $shippingNotifications,
@@ -53,6 +65,11 @@ class ReturnController extends Controller
             'shipment_status' => trim(
                 (string) $this->request->input(
                     'shipment_status'
+                )
+            ),
+            'resolution_type' => trim(
+                (string) $this->request->input(
+                    'resolution_type'
                 )
             ),
         ];
@@ -94,6 +111,13 @@ class ReturnController extends Controller
                     'delivered',
                     'exception',
                     'cancelled',
+                ],
+                'resolutionTypes' => [
+                    'refund',
+                    'store_credit',
+                    'exchange',
+                    'mixed',
+                    'none',
                 ],
                 'success' => $success,
                 'error' => $error,
@@ -276,6 +300,31 @@ class ReturnController extends Controller
                 'shipment' =>
                     $this->returnShipments
                         ->findByReturn($returnId),
+                'carrierIntegration' => $this->carrierIntegrations->forStore((int) $return['store_id']),
+                'carrierQuotes' => $this->carrierQuotes->availableForReturn($returnId),
+                'replacementProducts' =>
+                    $this->returnExchanges
+                        ->productsForStore(
+                            (int) $return['store_id']
+                        ),
+                'exchange' =>
+                    $this->returnExchanges
+                        ->findByReturn($returnId),
+                'exchangeItems' =>
+                    $this->returnExchanges
+                        ->itemsForReturn($returnId),
+                'storeCreditAccount' =>
+                    $this->storeCredits
+                        ->accountForCustomer(
+                            (int) $return['store_id'],
+                            (int) $return['customer_id'],
+                            (string) $return['currency']
+                        ),
+                'storeCreditTransaction' =>
+                    $this->storeCredits
+                        ->transactionForReturn(
+                            $returnId
+                        ),
                 'shipmentEvents' => (
                     $shipment = $this->returnShipments
                         ->findByReturn($returnId)
@@ -294,6 +343,26 @@ class ReturnController extends Controller
     }
 
 
+
+
+    public function requestCarrierRates(Request $request)
+    {
+        $returnId=(int)$request->route('id');
+        if(!$this->validateCsrf()){ $this->redirectWithError($returnId,'Security token expired. Please try again.'); return; }
+        try{$rates=$this->returnCarrierService->quote($returnId,['length'=>$this->request->input('length'),'width'=>$this->request->input('width'),'height'=>$this->request->input('height'),'weight_oz'=>$this->request->input('weight_oz')]);
+            $this->csrf->regenerate();$_SESSION['returns_success']=count($rates).' live carrier rates retrieved.';}
+        catch(\Throwable $e){$_SESSION['returns_error']=$e->getMessage()?:'Unable to retrieve live carrier rates.';}
+        $this->response->redirect('/admin/returns/'.$returnId);
+    }
+
+    public function purchaseCarrierRate(Request $request)
+    {
+        $returnId=(int)$request->route('id');
+        if(!$this->validateCsrf()){ $this->redirectWithError($returnId,'Security token expired. Please try again.'); return; }
+        try{$this->returnCarrierService->purchase($returnId,(int)$this->request->input('quote_id'));$this->csrf->regenerate();$_SESSION['returns_success']='Live carrier postage and label purchased successfully.';$this->queueShippingNotification($returnId,'shipment_label_ready');}
+        catch(\Throwable $e){$_SESSION['returns_error']=$e->getMessage()?:'Unable to purchase the selected carrier rate.';}
+        $this->response->redirect('/admin/returns/'.$returnId);
+    }
 
     public function saveShipping(Request $request)
     {
@@ -441,6 +510,15 @@ class ReturnController extends Controller
             http_response_code(404);
 
             return '404 - Return shipping label not found';
+        }
+
+        $providerLabel = $shipment['provider_label_pdf_url']
+            ?? $shipment['provider_label_url']
+            ?? null;
+
+        if (! empty($providerLabel)) {
+            $this->response->redirect((string) $providerLabel);
+            return;
         }
 
         return $this->view(
@@ -602,18 +680,31 @@ class ReturnController extends Controller
             return;
         }
 
-        $processRefund =
-            (string) $this->request->input(
-                'process_refund'
-            ) === '1';
-
-        $refundAmount = round(
+        $cashRefundAmount = round(
             (float) $this->request->input(
-                'refund_amount',
+                'cash_refund_amount',
                 0
             ),
             2
         );
+
+        $storeCreditAmount = round(
+            (float) $this->request->input(
+                'store_credit_amount',
+                0
+            ),
+            2
+        );
+
+        $exchangeSelections =
+            $this->request->input(
+                'exchange_items',
+                []
+            );
+
+        if (! is_array($exchangeSelections)) {
+            $exchangeSelections = [];
+        }
 
         $refundScenario = strtolower(
             trim(
@@ -638,12 +729,20 @@ class ReturnController extends Controller
         }
 
         try {
-            $result = $this->returnService->complete(
-                $returnId,
-                $processRefund,
-                $refundAmount,
-                $refundScenario
-            );
+            $result =
+                $this->returnResolutionService
+                    ->complete(
+                        $returnId,
+                        $cashRefundAmount,
+                        $storeCreditAmount,
+                        $exchangeSelections,
+                        $refundScenario,
+                        trim(
+                            (string) $this->request->input(
+                                'resolution_notes'
+                            )
+                        )
+                    );
 
             $this->csrf->regenerate();
 
@@ -658,7 +757,7 @@ class ReturnController extends Controller
             ) {
                 $_SESSION['returns_error'] =
                     $transaction['failure_message']
-                    ?? 'Return completed, but the refund failed.';
+                    ?? 'The non-cash resolution completed, but the payment refund failed.';
 
                 $this->queueNotification(
                     $returnId,
@@ -666,9 +765,7 @@ class ReturnController extends Controller
                 );
             } else {
                 $_SESSION['returns_success'] =
-                    $processRefund
-                        ? 'Return completed and refund processed successfully.'
-                        : 'Return completed without a refund.';
+                    'Return resolution completed successfully.';
 
                 $this->queueNotification(
                     $returnId,
@@ -678,7 +775,7 @@ class ReturnController extends Controller
         } catch (\Throwable $exception) {
             $_SESSION['returns_error'] =
                 $exception->getMessage()
-                ?: 'Unable to complete the return.';
+                ?: 'Unable to complete the return resolution.';
 
             $updatedReturn = $this->returns->find(
                 $returnId
@@ -686,10 +783,12 @@ class ReturnController extends Controller
 
             if (
                 $updatedReturn
-                && ($updatedReturn['status'] ?? '')
-                    === 'completed'
-                && ($updatedReturn['refund_status'] ?? '')
-                    === 'failed'
+                && (
+                    $updatedReturn[
+                        'resolution_status'
+                    ]
+                    ?? ''
+                ) === 'partial_failed'
             ) {
                 $this->queueNotification(
                     $returnId,

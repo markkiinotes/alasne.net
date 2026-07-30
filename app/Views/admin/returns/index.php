@@ -21,7 +21,7 @@ $label = static fn (mixed $value): string =>
 .returns-header h1 { margin:0 0 6px; }
 .returns-header p { margin:0; color:#64748b; }
 .returns-panel { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:22px; box-shadow:0 10px 26px rgba(15,23,42,.06); }
-.returns-filters { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr auto; gap:12px; align-items:end; }
+.returns-filters { display:grid; grid-template-columns:2fr repeat(5,1fr) auto; gap:12px; align-items:end; }
 .returns-table-wrap { overflow-x:auto; }
 .returns-table { width:100%; border-collapse:collapse; }
 .returns-table th,.returns-table td { padding:14px 12px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:top; }
@@ -117,6 +117,44 @@ $label = static fn (mixed $value): string =>
                 </select>
             </div>
 
+            <div class="form-group">
+                <label for="resolution_type">
+                    Resolution
+                </label>
+
+                <select
+                    id="resolution_type"
+                    name="resolution_type"
+                >
+                    <option value="">
+                        All resolutions
+                    </option>
+
+                    <?php foreach (
+                        $resolutionTypes
+                        as $resolutionType
+                    ): ?>
+                        <option
+                            value="<?= $escape(
+                                $resolutionType
+                            ) ?>"
+                            <?= (
+                                $filters[
+                                    'resolution_type'
+                                ]
+                                ?? ''
+                            ) === $resolutionType
+                                ? 'selected'
+                                : '' ?>
+                        >
+                            <?= $escape(
+                                $label($resolutionType)
+                            ) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
             <button type="submit" class="button-primary">Filter</button>
         </form>
     </section>
@@ -136,6 +174,7 @@ $label = static fn (mixed $value): string =>
                         <th>Requested</th>
                         <th>Approved</th>
                         <th>Refund</th>
+                        <th>Resolution</th>
                         <th>Shipment</th>
                         <th>Created</th>
                         <th></th>
@@ -160,6 +199,35 @@ $label = static fn (mixed $value): string =>
                             <td><?= $escape($label($return['refund_status'])) ?></td>
                             <td>
                                 <?= $escape(
+                                    $label(
+                                        $return[
+                                            'resolution_type'
+                                        ]
+                                        ?? 'none'
+                                    )
+                                ) ?>
+                                <?php if (
+                                    (
+                                        $return[
+                                            'resolution_status'
+                                        ]
+                                        ?? 'none'
+                                    ) !== 'none'
+                                ): ?>
+                                    <br>
+                                    <small>
+                                        <?= $escape(
+                                            $label(
+                                                $return[
+                                                    'resolution_status'
+                                                ]
+                                            )
+                                        ) ?>
+                                    </small>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?= $escape(
                                     ! empty($return['shipment_status'])
                                         ? $label($return['shipment_status'])
                                         : 'Not Created'
@@ -173,7 +241,7 @@ $label = static fn (mixed $value): string =>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (empty($returns)): ?>
-                        <tr><td colspan="13">No returns matched the selected filters.</td></tr>
+                        <tr><td colspan="14">No returns matched the selected filters.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

@@ -9,6 +9,13 @@ $label = static fn (mixed $value): string =>
 $status = (string)$return['status'];
 $shipment = $shipment ?? null;
 $shipmentEvents = $shipmentEvents ?? [];
+$carrierIntegration = $carrierIntegration ?? [];
+$carrierQuotes = $carrierQuotes ?? [];
+$replacementProducts = $replacementProducts ?? [];
+$exchange = $exchange ?? null;
+$exchangeItems = $exchangeItems ?? [];
+$storeCreditAccount = $storeCreditAccount ?? null;
+$storeCreditTransaction = $storeCreditTransaction ?? null;
 $currency = strtoupper((string)($return['currency'] ?? 'USD'));
 ?>
 
@@ -34,7 +41,15 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
 .return-shipping-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .return-shipping-stat { padding:14px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; }
 .return-shipping-stat small { display:block; margin-bottom:5px; color:#64748b; font-weight:800; text-transform:uppercase; }
-@media(max-width:900px){ .return-summary-grid,.return-action-grid,.return-shipping-grid,.return-shipping-summary{grid-template-columns:1fr;} }
+.return-resolution-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+.return-resolution-stat { padding:16px; border:1px solid #dbeafe; border-radius:12px; background:#eff6ff; }
+.return-resolution-stat small { display:block; margin-bottom:5px; color:#475569; font-weight:800; text-transform:uppercase; }
+.return-allocation-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:18px 0; }
+.return-allocation-summary article { padding:14px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; }
+.return-allocation-summary small { display:block; margin-bottom:5px; color:#64748b; font-weight:800; text-transform:uppercase; }
+.return-allocation-balance.good { color:#166534; }
+.return-allocation-balance.bad { color:#991b1b; }
+@media(max-width:900px){ .return-summary-grid,.return-action-grid,.return-shipping-grid,.return-shipping-summary,.return-resolution-grid,.return-allocation-summary{grid-template-columns:1fr;} }
 </style>
 
 <div class="return-show-page">
@@ -124,6 +139,38 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
     <?php endif; ?>
 
 
+
+    <?php if (
+        ! empty($return['rma_number'])
+        && ! in_array($status, ['requested','cancelled'], true)
+        && ! $shipment
+    ): ?>
+        <section class="return-panel">
+            <h2>Live Carrier Postage</h2>
+            <?php if ((int)($carrierIntegration['is_enabled'] ?? 0) === 1): ?>
+                <p>Request current EasyPost rates, then purchase a scannable carrier label. A purchased label creates the tracker automatically.</p>
+                <form method="POST" action="/admin/returns/<?= $escape($return['id']) ?>/carrier-rates">
+                    <input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>">
+                    <div class="return-shipping-grid">
+                        <div class="form-group"><label>Length (in)</label><input type="number" step="0.01" min="0.01" name="length" value="<?= $escape($carrierIntegration['default_length'] ?? 10) ?>" required></div>
+                        <div class="form-group"><label>Width (in)</label><input type="number" step="0.01" min="0.01" name="width" value="<?= $escape($carrierIntegration['default_width'] ?? 8) ?>" required></div>
+                        <div class="form-group"><label>Height (in)</label><input type="number" step="0.01" min="0.01" name="height" value="<?= $escape($carrierIntegration['default_height'] ?? 4) ?>" required></div>
+                        <div class="form-group"><label>Weight (oz)</label><input type="number" step="0.01" min="0.01" name="weight_oz" value="<?= $escape($carrierIntegration['default_weight_oz'] ?? 16) ?>" required></div>
+                    </div>
+                    <button type="submit" class="button-primary">Request Live Rates</button>
+                </form>
+                <?php if ($carrierQuotes): ?>
+                    <div style="overflow-x:auto;margin-top:22px"><table class="return-table"><thead><tr><th>Carrier</th><th>Service</th><th>Rate</th><th>Delivery</th><th>Expires</th><th></th></tr></thead><tbody>
+                    <?php foreach($carrierQuotes as $quote):?><tr><td><?= $escape($quote['carrier']) ?></td><td><?= $escape($quote['service']) ?></td><td>$<?= number_format((float)$quote['rate'],2) ?> <?= $escape($quote['currency']) ?></td><td><?= $escape($quote['delivery_days'] !== null ? $quote['delivery_days'].' days' : 'Not guaranteed') ?></td><td><?= $escape($quote['expires_at']) ?></td><td><form method="POST" action="/admin/returns/<?= $escape($return['id']) ?>/carrier-rates/purchase"><input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>"><input type="hidden" name="quote_id" value="<?= $escape($quote['id']) ?>"><button class="button-primary" type="submit">Purchase Label</button></form></td></tr><?php endforeach;?>
+                    </tbody></table></div>
+                <?php endif; ?>
+            <?php else: ?>
+                <p>EasyPost is not enabled for this store. Manual carrier tracking remains available below.</p>
+                <a class="button-muted" href="/admin/stores/<?= $escape($return['store_id']) ?>/carrier-integration">Configure EasyPost</a>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
+
     <?php if (
         ! empty($return['rma_number'])
         && ! in_array(
@@ -136,7 +183,7 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
             <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
                 <div>
                     <h2 style="margin-top:0;">Return Shipping Label and Tracking</h2>
-                    <p style="color:#64748b;">Manual carrier record and printable package identification label. This does not purchase carrier postage.</p>
+                    <p style="color:#64748b;">Manual tracking fallback or a live provider shipment. Purchased provider labels cannot be overwritten by the manual form.</p>
                 </div>
 
                 <?php if ($shipment): ?>
@@ -159,6 +206,10 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
                 </div>
             <?php endif; ?>
 
+            <?php if (
+                ! $shipment
+                || ($shipment['label_source'] ?? 'manual') !== 'provider'
+            ): ?>
             <form method="POST" action="/admin/returns/<?= $escape($return['id']) ?>/shipping">
                 <input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>">
 
@@ -219,6 +270,16 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
                     <?= $shipment ? 'Update Shipping Details' : 'Create Shipping Label' ?>
                 </button>
             </form>
+            <?php else: ?>
+                <div style="padding:16px;border:1px solid #bbf7d0;border-radius:12px;background:#f0fdf4;margin-bottom:18px;">
+                    <strong>Purchased through EasyPost</strong>
+                    <p style="margin-bottom:0;">
+                        Shipment: <?= $escape($shipment['provider_shipment_id'] ?? '—') ?><br>
+                        Tracker: <?= $escape($shipment['provider_tracker_id'] ?? '—') ?><br>
+                        Purchased: <?= $escape($shipment['purchased_at'] ?? '—') ?>
+                    </p>
+                </div>
+            <?php endif; ?>
 
             <?php if ($shipment): ?>
                 <hr style="margin:24px 0;border:0;border-top:1px solid #e2e8f0;">
@@ -276,11 +337,253 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
         </section>
     <?php endif; ?>
 
+
+    <?php if (
+        ($return['resolution_status'] ?? 'none')
+        !== 'none'
+    ): ?>
+        <section class="return-panel">
+            <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+                <div>
+                    <h2 style="margin-top:0;">
+                        Return Resolution
+                    </h2>
+
+                    <p>
+                        Final customer value allocation and
+                        linked replacement fulfillment.
+                    </p>
+                </div>
+
+                <?php if ($storeCreditAccount): ?>
+                    <a
+                        href="/admin/customers/<?= $escape(
+                            $return['customer_id']
+                        ) ?>/store-credit"
+                        class="button-muted"
+                    >
+                        Store Credit Ledger
+                    </a>
+                <?php endif; ?>
+            </div>
+
+            <div class="return-resolution-grid">
+                <article class="return-resolution-stat">
+                    <small>Resolution</small>
+
+                    <strong>
+                        <?= $escape(
+                            $label(
+                                $return[
+                                    'resolution_type'
+                                ]
+                                ?? 'none'
+                            )
+                        ) ?>
+                    </strong>
+
+                    <p>
+                        <?= $escape(
+                            $label(
+                                $return[
+                                    'resolution_status'
+                                ]
+                                ?? 'none'
+                            )
+                        ) ?>
+                    </p>
+                </article>
+
+                <article class="return-resolution-stat">
+                    <small>Original Payment</small>
+
+                    <strong>
+                        $<?= number_format(
+                            (float) (
+                                $return[
+                                    'cash_refund_amount'
+                                ]
+                                ?? 0
+                            ),
+                            2
+                        ) ?>
+                        <?= $escape($currency) ?>
+                    </strong>
+
+                    <p>
+                        <?= $escape(
+                            $label(
+                                $return[
+                                    'refund_status'
+                                ]
+                                ?? 'none'
+                            )
+                        ) ?>
+                    </p>
+                </article>
+
+                <article class="return-resolution-stat">
+                    <small>Store Credit</small>
+
+                    <strong>
+                        $<?= number_format(
+                            (float) (
+                                $return[
+                                    'store_credit_amount'
+                                ]
+                                ?? 0
+                            ),
+                            2
+                        ) ?>
+                        <?= $escape($currency) ?>
+                    </strong>
+
+                    <p>
+                        Current balance:
+                        $<?= number_format(
+                            (float) (
+                                $storeCreditAccount[
+                                    'balance'
+                                ]
+                                ?? 0
+                            ),
+                            2
+                        ) ?>
+                    </p>
+                </article>
+
+                <article class="return-resolution-stat">
+                    <small>Replacement Merchandise</small>
+
+                    <strong>
+                        $<?= number_format(
+                            (float) (
+                                $return[
+                                    'exchange_value'
+                                ]
+                                ?? 0
+                            ),
+                            2
+                        ) ?>
+                        <?= $escape($currency) ?>
+                    </strong>
+
+                    <p>
+                        <?php if ($exchange): ?>
+                            <a
+                                href="/admin/orders/<?= $escape(
+                                    $exchange[
+                                        'exchange_order_id'
+                                    ]
+                                ) ?>"
+                                class="table-link"
+                            >
+                                <?= $escape(
+                                    $exchange[
+                                        'exchange_order_number'
+                                    ]
+                                ) ?>
+                            </a>
+                        <?php else: ?>
+                            No replacement order
+                        <?php endif; ?>
+                    </p>
+                </article>
+            </div>
+
+            <?php if (! empty($exchangeItems)): ?>
+                <h3>Replacement Items</h3>
+
+                <div class="return-table-wrap">
+                    <table class="return-table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>SKU</th>
+                                <th>Quantity</th>
+                                <th>Unit Price</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <?php foreach (
+                                $exchangeItems
+                                as $exchangeItem
+                            ): ?>
+                                <tr>
+                                    <td>
+                                        <?= $escape(
+                                            $exchangeItem[
+                                                'product_name'
+                                            ]
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= $escape(
+                                            $exchangeItem[
+                                                'product_sku'
+                                            ]
+                                            ?? '—'
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= $escape(
+                                            $exchangeItem[
+                                                'quantity'
+                                            ]
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        $<?= number_format(
+                                            (float) $exchangeItem[
+                                                'unit_price'
+                                            ],
+                                            2
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        $<?= number_format(
+                                            (float) $exchangeItem[
+                                                'line_total'
+                                            ],
+                                            2
+                                        ) ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+
+            <?php if (! empty(
+                $return['resolution_notes']
+            )): ?>
+                <h3>Resolution Notes</h3>
+
+                <p>
+                    <?= nl2br(
+                        $escape(
+                            $return[
+                                'resolution_notes'
+                            ]
+                        )
+                    ) ?>
+                </p>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
+
     <section class="return-panel">
         <h2>Returned Items</h2>
         <div class="return-table-wrap">
             <table class="return-table">
-                <thead><tr><th>Item</th><th>Requested</th><th>Received</th><th>Restocked</th><th>Discarded</th><th>Condition</th><th>Approved Refund</th></tr></thead>
+                <thead><tr><th>Item</th><th>Requested</th><th>Received</th><th>Restocked</th><th>Discarded</th><th>Condition</th><th>Resolution</th><th>Approved Value</th></tr></thead>
                 <tbody>
                     <?php foreach ($items as $item): ?>
                         <tr>
@@ -290,6 +593,7 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
                             <td><?= $escape($item['quantity_restocked']) ?></td>
                             <td><?= $escape($item['quantity_discarded']) ?></td>
                             <td><?= $escape($label($item['condition_code'] ?? '—')) ?></td>
+                            <td><?= $escape($label($item['resolution_code'] ?? 'refund')) ?></td>
                             <td>$<?= number_format((float)$item['approved_refund_amount'],2) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -340,18 +644,473 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
 
     <?php if ($status === 'received'): ?>
         <section class="return-panel">
-            <h2>Complete Return</h2>
-            <form method="POST" action="/admin/returns/<?= $escape($return['id']) ?>/complete">
-                <input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>">
-                <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;"><input type="checkbox" name="process_refund" value="1" checked><span><strong>Process payment refund</strong><br><small>Uncheck to complete the physical return without changing payment totals.</small></span></label>
+            <h2>Complete Return Resolution</h2>
+
+            <p>
+                Allocate the complete approved merchandise
+                value among original-payment refund, store
+                credit, and replacement merchandise.
+            </p>
+
+            <form
+                method="POST"
+                action="/admin/returns/<?= $escape(
+                    $return['id']
+                ) ?>/complete"
+                id="return-resolution-form"
+            >
+                <input
+                    type="hidden"
+                    name="_csrf_token"
+                    value="<?= $escape($csrf_token) ?>"
+                >
+
                 <div class="return-action-grid">
-                    <div class="form-group"><label for="refund_amount">Refund Amount</label><input id="refund_amount" type="number" name="refund_amount" value="<?= $escape(number_format((float)$return['approved_refund_amount'],2,'.','')) ?>" min="0.01" max="<?= $escape(number_format((float)$return['approved_refund_amount'],2,'.','')) ?>" step="0.01"></div>
-                    <div class="form-group"><label for="refund_scenario">Test Refund Result</label><select id="refund_scenario" name="refund_scenario"><option value="approved">Approved</option><option value="declined">Declined</option><option value="error">Provider Error</option></select></div>
+                    <div class="form-group">
+                        <label for="cash_refund_amount">
+                            Original-Payment Refund
+                        </label>
+
+                        <input
+                            id="cash_refund_amount"
+                            type="number"
+                            name="cash_refund_amount"
+                            value="<?= $escape(
+                                number_format(
+                                    (float) $return[
+                                        'approved_refund_amount'
+                                    ],
+                                    2,
+                                    '.',
+                                    ''
+                                )
+                            ) ?>"
+                            min="0"
+                            max="<?= $escape(
+                                number_format(
+                                    (float) $return[
+                                        'approved_refund_amount'
+                                    ],
+                                    2,
+                                    '.',
+                                    ''
+                                )
+                            ) ?>"
+                            step="0.01"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="store_credit_amount">
+                            Store Credit
+                        </label>
+
+                        <input
+                            id="store_credit_amount"
+                            type="number"
+                            name="store_credit_amount"
+                            value="0.00"
+                            min="0"
+                            max="<?= $escape(
+                                number_format(
+                                    (float) $return[
+                                        'approved_refund_amount'
+                                    ],
+                                    2,
+                                    '.',
+                                    ''
+                                )
+                            ) ?>"
+                            step="0.01"
+                        >
+
+                        <small class="form-help">
+                            Existing balance:
+                            $<?= number_format(
+                                (float) (
+                                    $storeCreditAccount[
+                                        'balance'
+                                    ]
+                                    ?? 0
+                                ),
+                                2
+                            ) ?>
+                            <?= $escape($currency) ?>
+                        </small>
+                    </div>
                 </div>
-                <p style="color:#64748b;">Completing a return never changes inventory again. Restocking was handled during receipt.</p>
-                <button type="submit" class="button-primary" onclick="return confirm('Complete this return?');">Complete Return</button>
+
+                <h3>Replacement Exchange</h3>
+
+                <p style="color:#64748b;">
+                    Select a replacement product and
+                    quantity for any received return line.
+                    Current product prices determine the
+                    exchange value.
+                </p>
+
+                <div class="return-table-wrap">
+                    <table class="return-table">
+                        <thead>
+                            <tr>
+                                <th>Returned Item</th>
+                                <th>Received Qty</th>
+                                <th>Replacement Product</th>
+                                <th>Replacement Qty</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <?php foreach ($items as $item): ?>
+                                <tr>
+                                    <td>
+                                        <strong>
+                                            <?= $escape(
+                                                $item[
+                                                    'product_name'
+                                                ]
+                                            ) ?>
+                                        </strong>
+
+                                        <br>
+
+                                        <small>
+                                            Approved value:
+                                            $<?= number_format(
+                                                (float) $item[
+                                                    'approved_refund_amount'
+                                                ],
+                                                2
+                                            ) ?>
+                                        </small>
+                                    </td>
+
+                                    <td>
+                                        <?= $escape(
+                                            $item[
+                                                'quantity_received'
+                                            ]
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <select
+                                            name="exchange_items[<?= $escape(
+                                                $item['id']
+                                            ) ?>][product_id]"
+                                            class="exchange-product"
+                                        >
+                                            <option
+                                                value=""
+                                                data-price="0"
+                                            >
+                                                No replacement
+                                            </option>
+
+                                            <?php foreach (
+                                                $replacementProducts
+                                                as $product
+                                            ): ?>
+                                                <option
+                                                    value="<?= $escape(
+                                                        $product['id']
+                                                    ) ?>"
+                                                    data-price="<?= $escape(
+                                                        number_format(
+                                                            (float) $product[
+                                                                'price'
+                                                            ],
+                                                            2,
+                                                            '.',
+                                                            ''
+                                                        )
+                                                    ) ?>"
+                                                >
+                                                    <?= $escape(
+                                                        $product['name']
+                                                    ) ?>
+                                                    ·
+                                                    $<?= number_format(
+                                                        (float) $product[
+                                                            'price'
+                                                        ],
+                                                        2
+                                                    ) ?>
+                                                    ·
+                                                    <?= $escape(
+                                                        $product[
+                                                            'inventory_quantity'
+                                                        ]
+                                                    ) ?>
+                                                    available
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </td>
+
+                                    <td>
+                                        <input
+                                            type="number"
+                                            name="exchange_items[<?= $escape(
+                                                $item['id']
+                                            ) ?>][quantity]"
+                                            class="exchange-quantity"
+                                            value="0"
+                                            min="0"
+                                            max="<?= $escape(
+                                                $item[
+                                                    'quantity_received'
+                                                ]
+                                            ) ?>"
+                                            step="1"
+                                            style="width:90px;"
+                                        >
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="return-allocation-summary">
+                    <article>
+                        <small>Approved Value</small>
+
+                        <strong>
+                            $<span id="approved-value"><?= number_format(
+                                (float) $return[
+                                    'approved_refund_amount'
+                                ],
+                                2,
+                                '.',
+                                ''
+                            ) ?></span>
+                        </strong>
+                    </article>
+
+                    <article>
+                        <small>Exchange Value</small>
+
+                        <strong>
+                            $<span id="exchange-value">0.00</span>
+                        </strong>
+                    </article>
+
+                    <article>
+                        <small>Total Allocated</small>
+
+                        <strong>
+                            $<span id="allocated-value">0.00</span>
+                        </strong>
+                    </article>
+
+                    <article>
+                        <small>Remaining</small>
+
+                        <strong
+                            id="allocation-balance"
+                            class="return-allocation-balance"
+                        >
+                            $0.00
+                        </strong>
+                    </article>
+                </div>
+
+                <div class="return-action-grid">
+                    <div class="form-group">
+                        <label for="refund_scenario">
+                            Test Refund Result
+                        </label>
+
+                        <select
+                            id="refund_scenario"
+                            name="refund_scenario"
+                        >
+                            <option value="approved">
+                                Approved
+                            </option>
+
+                            <option value="declined">
+                                Declined
+                            </option>
+
+                            <option value="error">
+                                Provider Error
+                            </option>
+                        </select>
+
+                        <small class="form-help">
+                            Used only when the original-
+                            payment refund is greater than
+                            zero.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="resolution_notes">
+                            Resolution Notes
+                        </label>
+
+                        <textarea
+                            id="resolution_notes"
+                            name="resolution_notes"
+                            rows="4"
+                            maxlength="1000"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <p style="color:#64748b;">
+                    Exchange inventory is reserved and the
+                    replacement order is created when this
+                    form succeeds. Inventory already
+                    restocked during receiving is not
+                    changed again.
+                </p>
+
+                <button
+                    type="submit"
+                    class="button-primary"
+                    onclick="return confirm('Complete this return and issue the selected resolutions?');"
+                >
+                    Complete Resolution
+                </button>
             </form>
         </section>
+
+        <script>
+        (() => {
+            const approved = Number(
+                document.getElementById(
+                    'approved-value'
+                ).textContent
+            );
+
+            const refundInput =
+                document.getElementById(
+                    'cash_refund_amount'
+                );
+
+            const creditInput =
+                document.getElementById(
+                    'store_credit_amount'
+                );
+
+            const exchangeOutput =
+                document.getElementById(
+                    'exchange-value'
+                );
+
+            const allocatedOutput =
+                document.getElementById(
+                    'allocated-value'
+                );
+
+            const balanceOutput =
+                document.getElementById(
+                    'allocation-balance'
+                );
+
+            const calculate = () => {
+                let exchange = 0;
+
+                document
+                    .querySelectorAll(
+                        '#return-resolution-form tbody tr'
+                    )
+                    .forEach((row) => {
+                        const select =
+                            row.querySelector(
+                                '.exchange-product'
+                            );
+
+                        const quantity =
+                            row.querySelector(
+                                '.exchange-quantity'
+                            );
+
+                        if (! select || ! quantity) {
+                            return;
+                        }
+
+                        const option =
+                            select.options[
+                                select.selectedIndex
+                            ];
+
+                        const price = Number(
+                            option?.dataset.price
+                            ?? 0
+                        );
+
+                        exchange +=
+                            price
+                            * Number(
+                                quantity.value
+                                ?? 0
+                            );
+                    });
+
+                const refund = Number(
+                    refundInput.value || 0
+                );
+
+                const credit = Number(
+                    creditInput.value || 0
+                );
+
+                const allocated =
+                    refund + credit + exchange;
+
+                const remaining =
+                    approved - allocated;
+
+                exchangeOutput.textContent =
+                    exchange.toFixed(2);
+
+                allocatedOutput.textContent =
+                    allocated.toFixed(2);
+
+                balanceOutput.textContent =
+                    (
+                        remaining < 0
+                            ? '-$'
+                            : '$'
+                    )
+                    + Math.abs(
+                        remaining
+                    ).toFixed(2);
+
+                balanceOutput.classList.toggle(
+                    'good',
+                    Math.abs(remaining) <= 0.01
+                );
+
+                balanceOutput.classList.toggle(
+                    'bad',
+                    Math.abs(remaining) > 0.01
+                );
+            };
+
+            document
+                .querySelectorAll(
+                    '#return-resolution-form input, #return-resolution-form select'
+                )
+                .forEach((element) => {
+                    element.addEventListener(
+                        'input',
+                        calculate
+                    );
+
+                    element.addEventListener(
+                        'change',
+                        calculate
+                    );
+                });
+
+            calculate();
+        })();
+        </script>
     <?php endif; ?>
 
     <?php if (in_array($status, ['requested','approved'], true)): ?>

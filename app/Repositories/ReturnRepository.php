@@ -24,6 +24,8 @@ class ReturnRepository
                 o.order_number,
                 o.payment_status,
                 o.grand_total,
+                eo.order_number AS exchange_order_number,
+                eo.status AS exchange_order_status,
                 s.name AS store_name,
                 s.slug AS store_slug,
                 CONCAT(
@@ -40,6 +42,8 @@ class ReturnRepository
                 ON o.id = r.order_id
             INNER JOIN stores s
                 ON s.id = r.store_id
+            LEFT JOIN orders eo
+                ON eo.id = r.exchange_order_id
             LEFT JOIN customers c
                 ON c.id = o.customer_id
             LEFT JOIN return_shipments rs
@@ -86,6 +90,18 @@ class ReturnRepository
         if ($status !== '') {
             $sql .= ' AND r.status = :status';
             $parameters['status'] = $status;
+        }
+
+        $resolutionType = trim(
+            (string) (
+                $filters['resolution_type'] ?? ''
+            )
+        );
+
+        if ($resolutionType !== '') {
+            $sql .= ' AND r.resolution_type = :resolution_type';
+            $parameters['resolution_type'] =
+                $resolutionType;
         }
 
         $shipmentStatus = trim(
@@ -139,6 +155,7 @@ class ReturnRepository
             SELECT
                 r.*,
                 o.order_number,
+                o.customer_id,
                 o.status AS order_status,
                 o.payment_status,
                 o.payment_provider,
@@ -147,6 +164,8 @@ class ReturnRepository
                 o.amount_paid,
                 o.amount_refunded,
                 o.grand_total,
+                eo.order_number AS exchange_order_number,
+                eo.status AS exchange_order_status,
                 s.name AS store_name,
                 s.slug AS store_slug,
                 CONCAT(
@@ -167,6 +186,8 @@ class ReturnRepository
                 ON o.id = r.order_id
             INNER JOIN stores s
                 ON s.id = r.store_id
+            LEFT JOIN orders eo
+                ON eo.id = r.exchange_order_id
             LEFT JOIN customers c
                 ON c.id = o.customer_id
             WHERE r.id = :id
@@ -732,6 +753,102 @@ class ReturnRepository
         ]);
     }
 
+
+    public function markResolved(
+        int $returnId,
+        string $resolutionType,
+        string $resolutionStatus,
+        float $cashRefundAmount,
+        float $storeCreditAmount,
+        float $exchangeValue,
+        ?int $exchangeOrderId,
+        string $refundStatus,
+        ?string $notes = null
+    ): void {
+        $stmt = $this->db->prepare("
+            UPDATE returns
+            SET
+                status = 'completed',
+                resolution_type =
+                    :resolution_type,
+                resolution_status =
+                    :resolution_status,
+                cash_refund_amount =
+                    :cash_refund_amount,
+                store_credit_amount =
+                    :store_credit_amount,
+                exchange_value =
+                    :exchange_value,
+                exchange_order_id =
+                    :exchange_order_id,
+                resolution_notes =
+                    :resolution_notes,
+                refund_status =
+                    :refund_status,
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $returnId,
+            'resolution_type' => $resolutionType,
+            'resolution_status' =>
+                $resolutionStatus,
+            'cash_refund_amount' =>
+                $this->money($cashRefundAmount),
+            'store_credit_amount' =>
+                $this->money($storeCreditAmount),
+            'exchange_value' =>
+                $this->money($exchangeValue),
+            'exchange_order_id' =>
+                $exchangeOrderId,
+            'resolution_notes' =>
+                $this->nullable($notes),
+            'refund_status' => $refundStatus,
+        ]);
+    }
+
+    public function markResolutionStatus(
+        int $returnId,
+        string $resolutionStatus
+    ): void {
+        $stmt = $this->db->prepare("
+            UPDATE returns
+            SET
+                resolution_status =
+                    :resolution_status,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $returnId,
+            'resolution_status' =>
+                $resolutionStatus,
+        ]);
+    }
+
+    public function updateItemResolution(
+        int $returnItemId,
+        string $resolutionCode
+    ): void {
+        $stmt = $this->db->prepare("
+            UPDATE return_items
+            SET
+                resolution_code =
+                    :resolution_code,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $returnItemId,
+            'resolution_code' =>
+                $resolutionCode,
+        ]);
+    }
+
     public function markCompleted(
         int $returnId,
         string $refundStatus
@@ -1100,6 +1217,15 @@ class ReturnRepository
                 r.requested_refund_amount,
                 r.approved_refund_amount,
                 r.refund_status,
+                r.resolution_type,
+                r.resolution_status,
+                r.cash_refund_amount,
+                r.store_credit_amount,
+                r.exchange_value,
+                r.exchange_order_id,
+                r.resolution_notes,
+                eo.order_number AS exchange_order_number,
+                eo.status AS exchange_order_status,
                 r.requested_at,
                 r.approved_at,
                 r.authorization_issued_at,
@@ -1130,6 +1256,8 @@ class ReturnRepository
                 ON o.id = r.order_id
             INNER JOIN stores s
                 ON s.id = r.store_id
+            LEFT JOIN orders eo
+                ON eo.id = r.exchange_order_id
             INNER JOIN customers c
                 ON c.id = o.customer_id
             WHERE s.slug = :store_slug
@@ -1193,6 +1321,9 @@ class ReturnRepository
             'shipment_delivered',
             'shipment_exception',
             'shipment_cancelled',
+            'exchange_order_created',
+            'store_credit_issued',
+            'resolution_completed',
         ];
 
         $placeholders = implode(

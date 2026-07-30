@@ -42,6 +42,12 @@ $eventMessages = [
         'The carrier reported an exception or delay.',
     'shipment_cancelled' =>
         'The shipping record was cancelled.',
+    'exchange_order_created' =>
+        'A replacement order was created.',
+    'store_credit_issued' =>
+        'Store credit was issued.',
+    'resolution_completed' =>
+        'The return resolution was completed.',
 ];
 ?>
 
@@ -525,6 +531,122 @@ $eventMessages = [
                         </article>
                     <?php endforeach; ?>
                 </div>
+            </section>
+        <?php endif; ?>
+
+
+        <?php if (
+            ($return['resolution_status'] ?? 'none')
+            !== 'none'
+        ): ?>
+            <section class="return-track-panel">
+                <h2>Return Resolution</h2>
+
+                <div class="return-track-summary">
+                    <article class="return-track-stat">
+                        <span>Resolution</span>
+
+                        <strong>
+                            <?= $escape(
+                                $label(
+                                    $return[
+                                        'resolution_type'
+                                    ]
+                                    ?? 'none'
+                                )
+                            ) ?>
+                        </strong>
+                    </article>
+
+                    <article class="return-track-stat">
+                        <span>Original Payment</span>
+
+                        <strong>
+                            $<?= number_format(
+                                (float) (
+                                    $return[
+                                        'cash_refund_amount'
+                                    ]
+                                    ?? 0
+                                ),
+                                2
+                            ) ?>
+                        </strong>
+                    </article>
+
+                    <article class="return-track-stat">
+                        <span>Store Credit</span>
+
+                        <strong>
+                            $<?= number_format(
+                                (float) (
+                                    $return[
+                                        'store_credit_amount'
+                                    ]
+                                    ?? 0
+                                ),
+                                2
+                            ) ?>
+                        </strong>
+                    </article>
+
+                    <article class="return-track-stat">
+                        <span>Replacement Value</span>
+
+                        <strong>
+                            $<?= number_format(
+                                (float) (
+                                    $return[
+                                        'exchange_value'
+                                    ]
+                                    ?? 0
+                                ),
+                                2
+                            ) ?>
+                        </strong>
+                    </article>
+                </div>
+
+                <?php if (! empty(
+                    $return['exchange_order_number']
+                )): ?>
+                    <p>
+                        <strong>
+                            Replacement Order:
+                        </strong>
+
+                        <?= $escape(
+                            $return[
+                                'exchange_order_number'
+                            ]
+                        ) ?>
+
+                        ·
+
+                        <?= $escape(
+                            $label(
+                                $return[
+                                    'exchange_order_status'
+                                ]
+                                ?? 'processing'
+                            )
+                        ) ?>
+                    </p>
+                <?php endif; ?>
+
+                <?php if (! empty(
+                    $return['resolution_notes']
+                )): ?>
+                    <p>
+                        <?= nl2br(
+                            $escape(
+                                $return[
+                                    'resolution_notes'
+                                ]
+                            )
+                        ) ?>
+                    </p>
+                <?php endif; ?>
             </section>
         <?php endif; ?>
 

@@ -172,12 +172,8 @@ class ReturnNotificationService
                     'Return completed - '
                     . $returnNumber,
                 'heading' => 'Your return is complete',
-                'message' => (
-                    ($return['refund_status'] ?? 'none')
-                    === 'succeeded'
-                )
-                    ? 'Your return is complete and the approved refund was processed.'
-                    : 'Your physical return is complete. No successful payment refund is recorded for this return.',
+                'message' =>
+                    $this->completionMessage($return),
             ],
 
             'cancelled' => [
@@ -203,6 +199,234 @@ class ReturnNotificationService
                 'Unsupported return notification event.'
             ),
         };
+    }
+
+
+    private function completionMessage(
+        array $return
+    ): string {
+        $parts = [];
+
+        if (
+            (float) (
+                $return['cash_refund_amount'] ?? 0
+            ) > 0
+        ) {
+            $parts[] =
+                '$'
+                . number_format(
+                    (float) $return[
+                        'cash_refund_amount'
+                    ],
+                    2
+                )
+                . (
+                    ($return['refund_status'] ?? '')
+                    === 'succeeded'
+                        ? ' was refunded to the original payment method'
+                        : ' original-payment refund was recorded for processing'
+                );
+        }
+
+        if (
+            (float) (
+                $return['store_credit_amount'] ?? 0
+            ) > 0
+        ) {
+            $parts[] =
+                '$'
+                . number_format(
+                    (float) $return[
+                        'store_credit_amount'
+                    ],
+                    2
+                )
+                . ' was issued as store credit';
+        }
+
+        if (
+            (float) (
+                $return['exchange_value'] ?? 0
+            ) > 0
+        ) {
+            $parts[] =
+                'replacement order '
+                . (
+                    $return[
+                        'exchange_order_number'
+                    ]
+                    ?? 'was created'
+                );
+        }
+
+        if (empty($parts)) {
+            return 'Your physical return is complete.';
+        }
+
+        return 'Your return is complete: '
+            . implode('; ', $parts)
+            . '.';
+    }
+
+    private function resolutionHtml(
+        array $return
+    ): string {
+        if (
+            ($return['status'] ?? '')
+            !== 'completed'
+        ) {
+            return '';
+        }
+
+        $rows = '';
+
+        foreach (
+            [
+                'Original-Payment Refund' =>
+                    $return['cash_refund_amount']
+                    ?? 0,
+                'Store Credit' =>
+                    $return['store_credit_amount']
+                    ?? 0,
+                'Replacement Merchandise' =>
+                    $return['exchange_value']
+                    ?? 0,
+            ]
+            as $label => $amount
+        ) {
+            if ((float) $amount <= 0) {
+                continue;
+            }
+
+            $rows .=
+                '<strong>'
+                . htmlspecialchars($label)
+                . ':</strong> $'
+                . number_format(
+                    (float) $amount,
+                    2
+                )
+                . '<br>';
+        }
+
+        if (! empty(
+            $return['exchange_order_number']
+        )) {
+            $rows .=
+                '<strong>Exchange Order:</strong> '
+                . htmlspecialchars(
+                    (string) $return[
+                        'exchange_order_number'
+                    ]
+                )
+                . '<br>';
+        }
+
+        return '
+            <div style="padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;margin:22px 0;">
+                <strong>Resolution:</strong> '
+                . htmlspecialchars(
+                    ucwords(
+                        str_replace(
+                            '_',
+                            ' ',
+                            (string) (
+                                $return[
+                                    'resolution_type'
+                                ]
+                                ?? 'none'
+                            )
+                        )
+                    )
+                )
+                . '<br>'
+                . $rows
+                . '
+            </div>
+        ';
+    }
+
+    private function resolutionText(
+        array $return
+    ): string {
+        if (
+            ($return['status'] ?? '')
+            !== 'completed'
+        ) {
+            return '';
+        }
+
+        $text =
+            "\nResolution: "
+            . ucwords(
+                str_replace(
+                    '_',
+                    ' ',
+                    (string) (
+                        $return[
+                            'resolution_type'
+                        ]
+                        ?? 'none'
+                    )
+                )
+            );
+
+        if (
+            (float) (
+                $return['cash_refund_amount'] ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nOriginal-Payment Refund: $"
+                . number_format(
+                    (float) $return[
+                        'cash_refund_amount'
+                    ],
+                    2
+                );
+        }
+
+        if (
+            (float) (
+                $return['store_credit_amount'] ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nStore Credit: $"
+                . number_format(
+                    (float) $return[
+                        'store_credit_amount'
+                    ],
+                    2
+                );
+        }
+
+        if (
+            (float) (
+                $return['exchange_value'] ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nReplacement Merchandise: $"
+                . number_format(
+                    (float) $return[
+                        'exchange_value'
+                    ],
+                    2
+                );
+        }
+
+        if (! empty(
+            $return['exchange_order_number']
+        )) {
+            $text .=
+                "\nExchange Order: "
+                . $return[
+                    'exchange_order_number'
+                ];
+        }
+
+        return $text . "\n";
     }
 
     private function buildHtml(
@@ -343,6 +567,9 @@ class ReturnNotificationService
             ';
         }
 
+        $resolutionHtml =
+            $this->resolutionHtml($return);
+
         return '
             <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;max-width:680px;margin:0 auto;">
                 <h1 style="margin-bottom:8px;">
@@ -415,6 +642,7 @@ class ReturnNotificationService
 
                 '
                 . $authorizationHtml
+                . $resolutionHtml
                 . '
 
                 <table style="width:100%;border-collapse:collapse;">
@@ -550,6 +778,9 @@ class ReturnNotificationService
                 . "\n";
         }
 
+        $resolutionText =
+            $this->resolutionText($return);
+
         return $message['heading']
             . "\n\n"
             . $message['message']
@@ -581,6 +812,7 @@ class ReturnNotificationService
                 )
             )
             . $authorizationText
+            . $resolutionText
             . "\n"
             . "Items:\n"
             . implode("\n", $lines)
