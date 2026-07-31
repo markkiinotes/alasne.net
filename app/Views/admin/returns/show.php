@@ -395,12 +395,15 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
                 </article>
 
                 <article class="return-resolution-stat">
-                    <small>Original Payment</small>
+                    <small>External Payment Refund</small>
 
                     <strong>
                         $<?= number_format(
                             (float) (
                                 $return[
+                                    'external_refund_amount'
+                                ]
+                                ?? $return[
                                     'cash_refund_amount'
                                 ]
                                 ?? 0
@@ -419,6 +422,27 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
                                 ?? 'none'
                             )
                         ) ?>
+                    </p>
+                </article>
+
+                <article class="return-resolution-stat">
+                    <small>Redeemed Credit Restored</small>
+
+                    <strong>
+                        $<?= number_format(
+                            (float) (
+                                $return[
+                                    'redeemed_credit_restored_amount'
+                                ]
+                                ?? 0
+                            ),
+                            2
+                        ) ?>
+                        <?= $escape($currency) ?>
+                    </strong>
+
+                    <p>
+                        Returned to the original store-credit balance
                     </p>
                 </article>
 

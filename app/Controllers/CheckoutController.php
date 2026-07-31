@@ -9,6 +9,7 @@ use App\Core\Request;
 use App\Repositories\PaymentMethodRepository;
 use App\Repositories\ShippingMethodRepository;
 use App\Repositories\StoreRepository;
+use App\Repositories\StoreCreditRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Checkout\CheckoutPaymentFailedException;
 use App\Services\Checkout\CheckoutService;
@@ -22,6 +23,7 @@ class CheckoutController extends Controller
         private StoreRepository $stores,
         private ShippingMethodRepository $shippingMethods,
         private PaymentMethodRepository $paymentMethods,
+        private StoreCreditRepository $storeCredits,
         private CheckoutService $checkout,
         private CsrfService $csrf
     ) {
@@ -87,6 +89,21 @@ class CheckoutController extends Controller
             $_SESSION['checkout_error']
         );
 
+        $storeCredit = ! empty($old['email'])
+            && ! empty($old['postal_code'])
+                ? $this->storeCredits
+                    ->balanceForCheckoutCredentials(
+                        (int) $store['id'],
+                        (string) $old['email'],
+                        (string) $old['postal_code'],
+                        'USD'
+                    )
+                : [
+                    'verified' => false,
+                    'available_balance' => 0.0,
+                    'currency' => 'USD',
+                ];
+
         return $this->view('storefront.checkout', [
             'title' => 'Checkout | ' . $store['name'],
             'store' => $store,
@@ -94,6 +111,7 @@ class CheckoutController extends Controller
             'subtotal' => $this->subtotal($cartItems),
             'shippingMethods' => $shippingMethods,
             'paymentMethods' => $paymentMethods,
+            'storeCredit' => $storeCredit,
             'csrf_token' => $this->csrf->token(),
             'old' => $old,
             'error' => $error,
@@ -166,6 +184,14 @@ class CheckoutController extends Controller
                             $customerData[
                                 'test_scenario'
                             ],
+                        'apply_store_credit' =>
+                            $customerData[
+                                'apply_store_credit'
+                            ],
+                        'store_credit_amount' =>
+                            $customerData[
+                                'store_credit_amount'
+                            ],
                     ]
                 );
 
@@ -178,7 +204,7 @@ class CheckoutController extends Controller
                 $orderId;
 
             $_SESSION['checkout_success'] =
-                'Payment approved. Your order has been placed.';
+                'Your order has been paid and placed successfully.';
 
             $this->response->redirect(
                 '/store/'
@@ -209,6 +235,79 @@ class CheckoutController extends Controller
 
             return;
         }
+    }
+
+
+    public function storeCreditBalance(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        header('Content-Type: application/json');
+
+        if (! $store) {
+            http_response_code(404);
+
+            echo json_encode([
+                'ok' => false,
+                'message' => 'Store not found.',
+            ]);
+
+            exit;
+        }
+
+        if (! $this->csrf->validate(
+            (string) $this->request->input(
+                '_csrf_token'
+            )
+        )) {
+            http_response_code(403);
+
+            echo json_encode([
+                'ok' => false,
+                'message' =>
+                    'Security token expired. Refresh checkout and try again.',
+            ]);
+
+            exit;
+        }
+
+        $result =
+            $this->storeCredits
+                ->balanceForCheckoutCredentials(
+                    (int) $store['id'],
+                    (string) $this->request->input(
+                        'email'
+                    ),
+                    (string) $this->request->input(
+                        'postal_code'
+                    ),
+                    'USD'
+                );
+
+        /*
+         * Use a generic response when credentials do not
+         * match so this endpoint cannot confirm whether an
+         * email address belongs to a customer.
+         */
+        echo json_encode([
+            'ok' => true,
+            'verified' =>
+                (bool) ($result['verified'] ?? false),
+            'available_balance' =>
+                (float) (
+                    $result[
+                        'available_balance'
+                    ] ?? 0
+                ),
+            'currency' =>
+                $result['currency'] ?? 'USD',
+            'message' =>
+                ($result['verified'] ?? false)
+                    ? 'Store credit balance verified.'
+                    : 'No available store credit was found for those checkout details.',
+        ]);
+
+        exit;
     }
 
     public function success(Request $request)
@@ -357,6 +456,21 @@ class CheckoutController extends Controller
                     )
                 )
             ),
+            'apply_store_credit' =>
+                (string) $this->request->input(
+                    'apply_store_credit',
+                    '0'
+                ) === '1',
+            'store_credit_amount' => round(
+                max(
+                    0,
+                    (float) $this->request->input(
+                        'store_credit_amount',
+                        0
+                    )
+                ),
+                2
+            ),
         ];
     }
 
@@ -404,11 +518,11 @@ class CheckoutController extends Controller
         }
 
         if (
-            (int) $data['payment_method_id']
-            <= 0
+            (int) $data['payment_method_id'] <= 0
+            && empty($data['apply_store_credit'])
         ) {
             throw new RuntimeException(
-                'Select a payment method.'
+                'Select a payment method or apply store credit.'
             );
         }
 

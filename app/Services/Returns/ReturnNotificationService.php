@@ -209,22 +209,46 @@ class ReturnNotificationService
 
         if (
             (float) (
-                $return['cash_refund_amount'] ?? 0
+                $return[
+                    'redeemed_credit_restored_amount'
+                ] ?? 0
             ) > 0
         ) {
             $parts[] =
                 '$'
                 . number_format(
                     (float) $return[
-                        'cash_refund_amount'
+                        'redeemed_credit_restored_amount'
                     ],
+                    2
+                )
+                . ' in redeemed store credit was restored';
+        }
+
+        if (
+            (float) (
+                $return['external_refund_amount']
+                ?? $return['cash_refund_amount']
+                ?? 0
+            ) > 0
+        ) {
+            $externalRefund = (float) (
+                $return['external_refund_amount']
+                ?? $return['cash_refund_amount']
+                ?? 0
+            );
+
+            $parts[] =
+                '$'
+                . number_format(
+                    $externalRefund,
                     2
                 )
                 . (
                     ($return['refund_status'] ?? '')
                     === 'succeeded'
-                        ? ' was refunded to the original payment method'
-                        : ' original-payment refund was recorded for processing'
+                        ? ' was refunded to the external payment method'
+                        : ' external-payment refund was recorded for processing'
                 );
         }
 
@@ -282,10 +306,15 @@ class ReturnNotificationService
 
         foreach (
             [
-                'Original-Payment Refund' =>
-                    $return['cash_refund_amount']
+                'Redeemed Store Credit Restored' =>
+                    $return[
+                        'redeemed_credit_restored_amount'
+                    ] ?? 0,
+                'External Payment Refund' =>
+                    $return['external_refund_amount']
+                    ?? $return['cash_refund_amount']
                     ?? 0,
-                'Store Credit' =>
+                'New Store Credit Issued' =>
                     $return['store_credit_amount']
                     ?? 0,
                 'Replacement Merchandise' =>
@@ -373,15 +402,40 @@ class ReturnNotificationService
 
         if (
             (float) (
-                $return['cash_refund_amount'] ?? 0
+                $return[
+                    'redeemed_credit_restored_amount'
+                ] ?? 0
             ) > 0
         ) {
             $text .=
-                "\nOriginal-Payment Refund: $"
+                "\nRedeemed Store Credit Restored: $"
                 . number_format(
                     (float) $return[
-                        'cash_refund_amount'
+                        'redeemed_credit_restored_amount'
                     ],
+                    2
+                );
+        }
+
+        if (
+            (float) (
+                $return['external_refund_amount']
+                ?? $return['cash_refund_amount']
+                ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nExternal Payment Refund: $"
+                . number_format(
+                    (float) (
+                        $return[
+                            'external_refund_amount'
+                        ]
+                        ?? $return[
+                            'cash_refund_amount'
+                        ]
+                        ?? 0
+                    ),
                     2
                 );
         }

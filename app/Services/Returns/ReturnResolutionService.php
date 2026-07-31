@@ -59,6 +59,10 @@ class ReturnResolutionService
             2
         );
 
+        $creditRestoreAmount = 0.0;
+        $externalRefundAmount = $cashRefundAmount;
+        $creditRestoration = null;
+
         $this->db->beginTransaction();
 
         try {
@@ -205,6 +209,42 @@ class ReturnResolutionService
                 );
             }
 
+
+            if ($cashRefundAmount > 0) {
+                $refundAllocation =
+                    $this->storeCredits
+                        ->refundAllocationForOrder(
+                            (int) $return['order_id'],
+                            $cashRefundAmount
+                        );
+
+                $creditRestoreAmount = round(
+                    (float) $refundAllocation[
+                        'credit_restore_amount'
+                    ],
+                    2
+                );
+
+                $externalRefundAmount = round(
+                    (float) $refundAllocation[
+                        'external_refund_amount'
+                    ],
+                    2
+                );
+
+                if ($creditRestoreAmount > 0) {
+                    $creditRestoration =
+                        $this->storeCredits
+                            ->restoreForReturnRefund(
+                                (int) $return['order_id'],
+                                $returnId,
+                                $creditRestoreAmount,
+                                'Restored redeemed store credit from return '
+                                . $return['return_number']
+                            );
+                }
+            }
+
             $exchange = null;
 
             if (! empty($exchangeLines)) {
@@ -243,7 +283,7 @@ class ReturnResolutionService
                 );
 
             $resolutionStatus =
-                $cashRefundAmount > 0
+                $externalRefundAmount > 0
                     ? 'pending_refund'
                     : 'completed';
 
@@ -261,11 +301,22 @@ class ReturnResolutionService
                 $storeCreditAmount,
                 $exchangeValue,
                 $exchangeOrderId,
-                $cashRefundAmount > 0
+                $externalRefundAmount > 0
                     ? 'pending'
-                    : 'none',
+                    : (
+                        $cashRefundAmount > 0
+                            ? 'succeeded'
+                            : 'none'
+                    ),
                 $notes
             );
+
+            $this->returns
+                ->setTenderRefundAllocation(
+                    $returnId,
+                    $creditRestoreAmount,
+                    $externalRefundAmount
+                );
 
             $exchangeItemIds = array_column(
                 $exchangeLines,
@@ -360,6 +411,58 @@ class ReturnResolutionService
                 );
             }
 
+
+            if ($creditRestoration) {
+                $balance = (float) (
+                    $creditRestoration[
+                        'account'
+                    ]['balance'] ?? 0
+                );
+
+                $this->returns->recordEvent(
+                    $returnId,
+                    'redeemed_credit_restored',
+                    'Redeemed store credit restored',
+                    '$'
+                    . number_format(
+                        $creditRestoreAmount,
+                        2
+                    )
+                    . ' was restored to the customer’s store credit balance. New balance: $'
+                    . number_format($balance, 2)
+                    . '.',
+                    null,
+                    number_format(
+                        $creditRestoreAmount,
+                        2,
+                        '.',
+                        ''
+                    )
+                );
+
+                $this->returns->recordOrderEvent(
+                    (int) $return['order_id'],
+                    'store_credit_restored',
+                    'Store credit restored',
+                    '$'
+                    . number_format(
+                        $creditRestoreAmount,
+                        2
+                    )
+                    . ' in redeemed store credit was restored from return '
+                    . $return['return_number']
+                    . '.',
+                    null,
+                    number_format(
+                        $creditRestoreAmount,
+                        2,
+                        '.',
+                        ''
+                    ),
+                    true
+                );
+            }
+
             $this->returns->recordEvent(
                 $returnId,
                 'resolution_completed',
@@ -401,12 +504,12 @@ class ReturnResolutionService
 
         $refundTransaction = null;
 
-        if ($cashRefundAmount > 0) {
+        if ($externalRefundAmount > 0) {
             try {
                 $refundTransaction =
                     $this->payments->refundOrder(
                         (int) $return['order_id'],
-                        $cashRefundAmount,
+                        $externalRefundAmount,
                         [
                             'refund_scenario' =>
                                 $refundScenario,
@@ -433,7 +536,7 @@ class ReturnResolutionService
                         ? (int) $refundTransaction['id']
                         : null,
                     $succeeded
-                        ? $cashRefundAmount
+                        ? $externalRefundAmount
                         : 0,
                     $succeeded
                         ? 'Payment refund completed.'
@@ -463,7 +566,7 @@ class ReturnResolutionService
                     $succeeded
                         ? '$'
                             . number_format(
-                                $cashRefundAmount,
+                                $externalRefundAmount,
                                 2
                             )
                             . ' refunded to the original payment method.'
@@ -508,6 +611,26 @@ class ReturnResolutionService
                     $exception
                 );
             }
+        }
+
+
+        if (
+            $cashRefundAmount > 0
+            && $externalRefundAmount <= 0
+            && $creditRestoreAmount > 0
+        ) {
+            $this->returns->attachRefundResult(
+                $returnId,
+                'succeeded',
+                null,
+                0,
+                'The original store-credit portion was restored.'
+            );
+
+            $this->returns->markResolutionStatus(
+                $returnId,
+                'completed'
+            );
         }
 
         return [

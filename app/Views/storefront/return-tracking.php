@@ -559,13 +559,32 @@ $eventMessages = [
                     </article>
 
                     <article class="return-track-stat">
-                        <span>Original Payment</span>
+                        <span>External Payment Refund</span>
 
                         <strong>
                             $<?= number_format(
                                 (float) (
                                     $return[
+                                        'external_refund_amount'
+                                    ]
+                                    ?? $return[
                                         'cash_refund_amount'
+                                    ]
+                                    ?? 0
+                                ),
+                                2
+                            ) ?>
+                        </strong>
+                    </article>
+
+                    <article class="return-track-stat">
+                        <span>Redeemed Credit Restored</span>
+
+                        <strong>
+                            $<?= number_format(
+                                (float) (
+                                    $return[
+                                        'redeemed_credit_restored_amount'
                                     ]
                                     ?? 0
                                 ),

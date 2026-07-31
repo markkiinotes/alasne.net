@@ -6,6 +6,7 @@ namespace App\Services\Checkout;
 
 use App\Repositories\PaymentMethodRepository;
 use App\Repositories\PaymentTransactionRepository;
+use App\Repositories\StoreCreditRepository;
 use App\Repositories\TaxRuleRepository;
 use App\Services\Mail\EmailOutboxSender;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
@@ -21,7 +22,8 @@ class CheckoutService
         private EmailOutboxSender $emailSender,
         private TaxRuleRepository $taxRules,
         private PaymentMethodRepository $paymentMethods,
-        private PaymentTransactionRepository $paymentTransactions
+        private PaymentTransactionRepository $paymentTransactions,
+        private StoreCreditRepository $storeCredits
     ) {
     }
 
@@ -111,17 +113,6 @@ class CheckoutService
                 )
             );
 
-            $paymentMethodId = (int) (
-                $paymentData['payment_method_id']
-                ?? $customerData['payment_method_id']
-                ?? 0
-            );
-
-            $paymentMethod = $this->findPaymentMethod(
-                $storeId,
-                $paymentMethodId
-            );
-
             $shippingTotal = round(
                 (float) $shippingMethod['price'],
                 2
@@ -160,6 +151,47 @@ class CheckoutService
 
             $currency = 'USD';
 
+            $paymentMethodId = (int) (
+                $paymentData['payment_method_id']
+                ?? $customerData['payment_method_id']
+                ?? 0
+            );
+
+            $paymentMethod = $paymentMethodId > 0
+                ? $this->findPaymentMethod(
+                    $storeId,
+                    $paymentMethodId
+                )
+                : null;
+
+            $applyStoreCredit = filter_var(
+                $paymentData['apply_store_credit']
+                    ?? false,
+                FILTER_VALIDATE_BOOL
+            );
+
+            $requestedCredit = $applyStoreCredit
+                ? round(
+                    max(
+                        0,
+                        (float) (
+                            $paymentData[
+                                'store_credit_amount'
+                            ]
+                            ?? 0
+                        )
+                    ),
+                    2
+                )
+                : 0.0;
+
+            if (
+                $applyStoreCredit
+                && $requestedCredit <= 0
+            ) {
+                $requestedCredit = $grandTotal;
+            }
+
             $orderId = $this->createOrder([
                 'order_number' => $orderNumber,
                 'store_id' => $storeId,
@@ -168,13 +200,16 @@ class CheckoutService
 
                 'payment_status' => 'processing',
                 'payment_method_id' =>
-                    (int) $paymentMethod['id'],
+                    $paymentMethod['id'] ?? null,
                 'payment_method_name' =>
-                    $paymentMethod['name'],
+                    $paymentMethod['name']
+                    ?? 'Store Credit',
                 'payment_method_code' =>
-                    $paymentMethod['code'],
+                    $paymentMethod['code']
+                    ?? 'store-credit',
                 'payment_provider' =>
-                    $paymentMethod['provider'],
+                    $paymentMethod['provider']
+                    ?? 'store_credit',
                 'currency' => $currency,
 
                 'subtotal' => $subtotal,
@@ -217,6 +252,10 @@ class CheckoutService
 
                 'discount_total' => $discountTotal,
                 'grand_total' => $grandTotal,
+                'store_credit_reserved_amount' => 0,
+                'store_credit_applied_amount' => 0,
+                'external_payment_amount' =>
+                    $grandTotal,
             ]);
 
             $this->recordOrderEvent(
@@ -229,10 +268,6 @@ class CheckoutService
                 true
             );
 
-            /*
-             * Create the order items before processing payment.
-             * Inventory remains untouched until payment succeeds.
-             */
             foreach ($validatedItems as $item) {
                 $this->createOrderItem(
                     $orderId,
@@ -242,115 +277,222 @@ class CheckoutService
                 );
             }
 
-            $idempotencyKey =
-                'checkout-charge-'
-                . $orderId
-                . '-'
-                . bin2hex(random_bytes(16));
+            $reservation = null;
+            $storeCreditAmount = 0.0;
 
-            $paymentTransactionId =
-                $this->paymentTransactions->create([
-                    'store_id' => $storeId,
-                    'order_id' => $orderId,
-                    'payment_method_id' =>
-                        (int) $paymentMethod['id'],
-                    'type' => 'charge',
-                    'status' => 'pending',
-                    'provider' =>
-                        $paymentMethod['provider'],
-                    'idempotency_key' =>
-                        $idempotencyKey,
-                    'currency' => $currency,
-                    'amount' => $grandTotal,
-                    'payment_method_name' =>
-                        $paymentMethod['name'],
-                    'payment_method_code' =>
-                        $paymentMethod['code'],
-                    'customer_email' =>
-                        $customerData['email'] ?? null,
-                    'request' =>
-                        $this->safePaymentRequest(
-                            $paymentData
-                        ),
-                ]);
+            if (
+                $applyStoreCredit
+                && $requestedCredit > 0
+            ) {
+                $reservation =
+                    $this->storeCredits
+                        ->reserveForCheckout(
+                            $storeId,
+                            $customerId,
+                            $orderId,
+                            min(
+                                $requestedCredit,
+                                $grandTotal
+                            ),
+                            $currency
+                        );
 
-            $provider = $this->resolvePaymentProvider(
-                (string) $paymentMethod['provider']
-            );
-
-            try {
-                $paymentResult = $provider->charge(
-                    $paymentMethod,
-                    [
-                        'id' => $orderId,
-                        'order_number' => $orderNumber,
-                        'store_id' => $storeId,
-                        'grand_total' => $grandTotal,
-                        'currency' => $currency,
-                    ],
-                    $paymentData
-                );
-            } catch (\Throwable $providerException) {
-                $paymentResult = PaymentResult::failed(
-                    'provider_exception',
-                    $providerException->getMessage()
-                    ?: 'The payment provider could not process the request.'
+                $storeCreditAmount = round(
+                    (float) (
+                        $reservation['amount'] ?? 0
+                    ),
+                    2
                 );
             }
 
-            if (! $paymentResult->isSuccessful()) {
-                $this->paymentTransactions->markFailed(
-                    $paymentTransactionId,
-                    [
-                        'provider_transaction_id' =>
-                            $paymentResult
-                                ->providerTransactionId(),
-                        'response' =>
-                            $paymentResult->response(),
-                        'failure_code' =>
-                            $paymentResult->failureCode(),
-                        'failure_message' =>
-                            $paymentResult->failureMessage(),
-                    ]
-                );
+            $externalAmount = round(
+                max(
+                    0,
+                    $grandTotal - $storeCreditAmount
+                ),
+                2
+            );
 
-                $this->markOrderPaymentFailed(
-                    $orderId,
-                    $paymentTransactionId,
-                    $paymentResult
+            if (
+                $externalAmount > 0
+                && ! $paymentMethod
+            ) {
+                throw new RuntimeException(
+                    'Select a payment method for the remaining balance of $'
+                    . number_format(
+                        $externalAmount,
+                        2
+                    )
+                    . '.'
                 );
+            }
 
-                $paymentFailureMessage =
-                    $paymentResult->failureMessage()
-                    ?: 'The payment was not approved.';
-            } else {
-                $this->paymentTransactions->markSucceeded(
-                    $paymentTransactionId,
-                    [
-                        'provider_transaction_id' =>
-                            $paymentResult
-                                ->providerTransactionId(),
-                        'response' =>
-                            $paymentResult->response(),
-                    ]
-                );
+            $this->updateOrderSettlement(
+                $orderId,
+                $paymentMethod,
+                $storeCreditAmount,
+                $externalAmount
+            );
+
+            $paymentTransactionId = null;
+
+            if ($externalAmount > 0) {
+                $idempotencyKey =
+                    'checkout-charge-'
+                    . $orderId
+                    . '-'
+                    . bin2hex(random_bytes(16));
+
+                $paymentTransactionId =
+                    $this->paymentTransactions->create([
+                        'store_id' => $storeId,
+                        'order_id' => $orderId,
+                        'payment_method_id' =>
+                            (int) $paymentMethod['id'],
+                        'type' => 'charge',
+                        'status' => 'pending',
+                        'provider' =>
+                            $paymentMethod['provider'],
+                        'idempotency_key' =>
+                            $idempotencyKey,
+                        'currency' => $currency,
+                        'amount' => $externalAmount,
+                        'payment_method_name' =>
+                            $paymentMethod['name'],
+                        'payment_method_code' =>
+                            $paymentMethod['code'],
+                        'customer_email' =>
+                            $customerData['email'] ?? null,
+                        'request' =>
+                            $this->safePaymentRequest(
+                                $paymentData
+                            ),
+                    ]);
+
+                $provider =
+                    $this->resolvePaymentProvider(
+                        (string) $paymentMethod[
+                            'provider'
+                        ]
+                    );
+
+                try {
+                    $paymentResult = $provider->charge(
+                        $paymentMethod,
+                        [
+                            'id' => $orderId,
+                            'order_number' =>
+                                $orderNumber,
+                            'store_id' => $storeId,
+                            'grand_total' =>
+                                $externalAmount,
+                            'currency' => $currency,
+                            'store_credit_amount' =>
+                                $storeCreditAmount,
+                            'order_total' => $grandTotal,
+                        ],
+                        $paymentData
+                    );
+                } catch (\Throwable $providerException) {
+                    $paymentResult = PaymentResult::failed(
+                        'provider_exception',
+                        $providerException->getMessage()
+                        ?: 'The payment provider could not process the request.'
+                    );
+                }
+
+                if (! $paymentResult->isSuccessful()) {
+                    $this->paymentTransactions->markFailed(
+                        $paymentTransactionId,
+                        [
+                            'provider_transaction_id' =>
+                                $paymentResult
+                                    ->providerTransactionId(),
+                            'response' =>
+                                $paymentResult->response(),
+                            'failure_code' =>
+                                $paymentResult->failureCode(),
+                            'failure_message' =>
+                                $paymentResult->failureMessage(),
+                        ]
+                    );
+
+                    $this->storeCredits
+                        ->releaseCheckoutReservation(
+                            $orderId,
+                            'External payment was not approved.'
+                        );
+
+                    $this->markOrderPaymentFailed(
+                        $orderId,
+                        $paymentTransactionId,
+                        $paymentResult
+                    );
+
+                    $paymentFailureMessage =
+                        $paymentResult->failureMessage()
+                        ?: 'The payment was not approved.';
+                } else {
+                    $this->paymentTransactions
+                        ->markSucceeded(
+                            $paymentTransactionId,
+                            [
+                                'provider_transaction_id' =>
+                                    $paymentResult
+                                        ->providerTransactionId(),
+                                'response' =>
+                                    $paymentResult
+                                        ->response(),
+                            ]
+                        );
+                }
+            }
+
+            if ($paymentFailureMessage === null) {
+                if ($storeCreditAmount > 0) {
+                    $this->storeCredits
+                        ->finalizeCheckoutReservation(
+                            $orderId
+                        );
+
+                    $this->recordOrderEvent(
+                        $orderId,
+                        'store_credit_applied',
+                        'Store credit applied',
+                        '$'
+                        . number_format(
+                            $storeCreditAmount,
+                            2
+                        )
+                        . ' in store credit was applied to this order.',
+                        null,
+                        number_format(
+                            $storeCreditAmount,
+                            2,
+                            '.',
+                            ''
+                        ),
+                        true
+                    );
+                }
 
                 $this->markOrderPaid(
                     $orderId,
-                    $paymentTransactionId
+                    $paymentTransactionId,
+                    $grandTotal,
+                    $storeCreditAmount,
+                    $externalAmount
                 );
 
-                /*
-                 * Stock is reduced only after payment approval.
-                 */
                 foreach ($validatedItems as $item) {
                     $product = $item['product'];
                     $quantity = (int) $item['quantity'];
 
-                    $balanceAfter = $this->reduceInventory(
-                        (int) $product['id'],
-                        $quantity
-                    );
+                    $balanceAfter =
+                        $this->reduceInventory(
+                            (int) $product['id'],
+                            $quantity
+                        );
 
                     $this->recordInventoryMovement(
                         (int) $product['id'],
@@ -362,9 +504,6 @@ class CheckoutService
                     );
                 }
 
-                /*
-                 * Confirmation is queued only for paid orders.
-                 */
                 $emailOutboxId =
                     $this->queueOrderConfirmationEmail(
                         $orderId
@@ -387,10 +526,6 @@ class CheckoutService
             );
         }
 
-        /*
-         * Email delivery occurs only after the paid order and
-         * its inventory updates have safely committed.
-         */
         if ($emailOutboxId !== null) {
             $this->emailSender->sendOne(
                 $emailOutboxId
@@ -568,6 +703,9 @@ class CheckoutService
                 payment_method_code,
                 payment_provider,
                 currency,
+                store_credit_reserved_amount,
+                store_credit_applied_amount,
+                external_payment_amount,
 
                 subtotal,
 
@@ -607,6 +745,9 @@ class CheckoutService
                 :payment_method_code,
                 :payment_provider,
                 :currency,
+                :store_credit_reserved_amount,
+                :store_credit_applied_amount,
+                :external_payment_amount,
 
                 :subtotal,
 
@@ -654,6 +795,18 @@ class CheckoutService
             'payment_provider' =>
                 $data['payment_provider'],
             'currency' => $data['currency'],
+            'store_credit_reserved_amount' =>
+                $data[
+                    'store_credit_reserved_amount'
+                ] ?? 0,
+            'store_credit_applied_amount' =>
+                $data[
+                    'store_credit_applied_amount'
+                ] ?? 0,
+            'external_payment_amount' =>
+                $data[
+                    'external_payment_amount'
+                ] ?? $data['grand_total'],
 
             'subtotal' => $data['subtotal'],
 
@@ -1097,6 +1250,26 @@ class CheckoutService
                         2
                     )
                     . '<br>
+                    <strong>Store Credit:</strong> $'
+                    . number_format(
+                        (float) (
+                            $order[
+                                'store_credit_applied_amount'
+                            ] ?? 0
+                        ),
+                        2
+                    )
+                    . '<br>
+                    <strong>External Payment:</strong> $'
+                    . number_format(
+                        (float) (
+                            $order[
+                                'external_payment_amount'
+                            ] ?? 0
+                        ),
+                        2
+                    )
+                    . '<br>
                     <strong>Total:</strong> $'
                     . number_format(
                         (float) (
@@ -1291,117 +1464,164 @@ class CheckoutService
         };
     }
 
-    private function markOrderPaid(
+    private function updateOrderSettlement(
         int $orderId,
-        int $paymentTransactionId
+        ?array $paymentMethod,
+        float $storeCreditAmount,
+        float $externalAmount
     ): void {
-        /*
-         * payment_transactions is the immutable source of
-         * truth for the captured amount. Copy its values to
-         * the order in one guarded UPDATE.
-         */
+        $methodName = $paymentMethod['name']
+            ?? 'Store Credit';
+
+        $methodCode = $paymentMethod['code']
+            ?? 'store-credit';
+
+        $provider = $paymentMethod['provider']
+            ?? 'store_credit';
+
+        if (
+            $storeCreditAmount > 0
+            && $externalAmount > 0
+        ) {
+            $methodName .= ' + Store Credit';
+            $methodCode .= '+store-credit';
+            $provider .= '+store_credit';
+        } elseif (
+            $storeCreditAmount > 0
+            && $externalAmount <= 0
+        ) {
+            $methodName = 'Store Credit';
+            $methodCode = 'store-credit';
+            $provider = 'store_credit';
+        }
+
         $stmt = $this->db->prepare("
-            UPDATE orders AS o
-            INNER JOIN payment_transactions AS pt
-                ON pt.id = :payment_transaction_id
-                AND pt.order_id = o.id
-                AND pt.type = 'charge'
-                AND pt.status = 'succeeded'
+            UPDATE orders
             SET
-                o.status = 'paid',
-                o.payment_status = 'paid',
-                o.payment_method_id =
-                    pt.payment_method_id,
-                o.payment_method_name =
-                    pt.payment_method_name,
-                o.payment_method_code =
-                    pt.payment_method_code,
-                o.payment_provider =
-                    pt.provider,
-                o.payment_transaction_id =
-                    pt.id,
-                o.currency = pt.currency,
-                o.amount_paid = pt.amount,
-                o.amount_refunded =
-                    LEAST(
-                        o.amount_refunded,
-                        pt.amount
-                    ),
-                o.paid_at =
-                    COALESCE(
-                        o.paid_at,
-                        pt.processed_at,
-                        NOW()
-                    ),
-                o.payment_failed_at = NULL,
-                o.updated_at = NOW()
-            WHERE o.id = :order_id
+                payment_method_id =
+                    :payment_method_id,
+                payment_method_name =
+                    :payment_method_name,
+                payment_method_code =
+                    :payment_method_code,
+                payment_provider =
+                    :payment_provider,
+                store_credit_reserved_amount =
+                    :store_credit_reserved_amount,
+                external_payment_amount =
+                    :external_payment_amount,
+                updated_at = NOW()
+            WHERE id = :id
         ");
 
         $stmt->execute([
-            'order_id' => $orderId,
-            'payment_transaction_id' =>
-                $paymentTransactionId,
+            'id' => $orderId,
+            'payment_method_id' =>
+                $paymentMethod['id'] ?? null,
+            'payment_method_name' => $methodName,
+            'payment_method_code' => $methodCode,
+            'payment_provider' => $provider,
+            'store_credit_reserved_amount' =>
+                number_format(
+                    $storeCreditAmount,
+                    2,
+                    '.',
+                    ''
+                ),
+            'external_payment_amount' =>
+                number_format(
+                    $externalAmount,
+                    2,
+                    '.',
+                    ''
+                ),
         ]);
+    }
 
-        $verify = $this->db->prepare("
-            SELECT
-                o.payment_status,
-                o.payment_transaction_id,
-                o.amount_paid,
-                pt.amount AS transaction_amount
-            FROM orders o
-            INNER JOIN payment_transactions pt
-                ON pt.id = :payment_transaction_id
-                AND pt.order_id = o.id
-            WHERE o.id = :order_id
-            LIMIT 1
+    private function markOrderPaid(
+        int $orderId,
+        ?int $paymentTransactionId,
+        float $grandTotal,
+        float $storeCreditAmount,
+        float $externalAmount
+    ): void {
+        $stmt = $this->db->prepare("
+            UPDATE orders
+            SET
+                status = 'paid',
+                payment_status = 'paid',
+                payment_transaction_id =
+                    :payment_transaction_id,
+                amount_paid = :amount_paid,
+                amount_refunded = 0.00,
+                store_credit_reserved_amount = 0.00,
+                store_credit_applied_amount =
+                    :store_credit_applied_amount,
+                external_payment_amount =
+                    :external_payment_amount,
+                paid_at = NOW(),
+                payment_failed_at = NULL,
+                updated_at = NOW()
+            WHERE id = :id
         ");
 
-        $verify->execute([
-            'order_id' => $orderId,
+        $stmt->execute([
+            'id' => $orderId,
             'payment_transaction_id' =>
                 $paymentTransactionId,
+            'amount_paid' => number_format(
+                $grandTotal,
+                2,
+                '.',
+                ''
+            ),
+            'store_credit_applied_amount' =>
+                number_format(
+                    $storeCreditAmount,
+                    2,
+                    '.',
+                    ''
+                ),
+            'external_payment_amount' =>
+                number_format(
+                    $externalAmount,
+                    2,
+                    '.',
+                    ''
+                ),
         ]);
 
-        $paymentState = $verify->fetch();
+        $parts = [];
 
-        if (
-            ! $paymentState
-            || (
-                $paymentState['payment_status']
-                ?? ''
-            ) !== 'paid'
-            || (int) (
-                $paymentState[
-                    'payment_transaction_id'
-                ] ?? 0
-            ) !== $paymentTransactionId
-            || round(
-                (float) (
-                    $paymentState['amount_paid']
-                    ?? -1
-                ),
-                2
-            ) !== round(
-                (float) (
-                    $paymentState[
-                        'transaction_amount'
-                    ] ?? -2
-                ),
-                2
-            )
-        ) {
-            throw new RuntimeException(
-                'Payment was approved, but the order payment totals could not be synchronized.'
-            );
+        if ($storeCreditAmount > 0) {
+            $parts[] = '$'
+                . number_format(
+                    $storeCreditAmount,
+                    2
+                )
+                . ' store credit';
         }
+
+        if ($externalAmount > 0) {
+            $parts[] = '$'
+                . number_format(
+                    $externalAmount,
+                    2
+                )
+                . ' external payment';
+        }
+
+        $description = empty($parts)
+            ? 'The order was paid.'
+            : 'Settlement completed using '
+                . implode(' and ', $parts)
+                . '.';
 
         $this->recordOrderEvent(
             $orderId,
             'payment_succeeded',
             'Payment received',
-            'The payment was approved and the order payment totals were synchronized from the successful charge.',
+            $description,
             'processing',
             'paid',
             true

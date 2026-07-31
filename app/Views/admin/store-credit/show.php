@@ -24,7 +24,11 @@ $label = static fn (mixed $value): string =>
 .credit-table { width:100%; border-collapse:collapse; }
 .credit-table th,.credit-table td { padding:12px 10px; border-bottom:1px solid #e2e8f0; text-align:left; }
 .credit-table th { background:#f8fafc; color:#475569; font-size:12px; text-transform:uppercase; }
-.credit-amount { font-weight:800; color:#166534; }
+.credit-amount { font-weight:800; }
+.credit-amount.credit { color:#166534; }
+.credit-amount.debit { color:#991b1b; }
+.credit-account-values { display:grid; gap:8px; margin-top:14px; }
+.credit-account-value { display:flex; justify-content:space-between; gap:16px; }
 @media(max-width:800px){ .credit-summary{grid-template-columns:1fr;} }
 </style>
 
@@ -69,20 +73,64 @@ $label = static fn (mixed $value): string =>
 
                 <h2>
                     $<?= number_format(
-                        (float) $account['balance'],
+                        (float) (
+                            $account[
+                                'available_balance'
+                            ]
+                            ?? $account['balance']
+                            ?? 0
+                        ),
                         2
                     ) ?>
                     <?= $escape(
                         $account['currency']
                     ) ?>
+                    Available
                 </h2>
 
-                <p>
-                    Status:
-                    <?= $escape(
-                        $label($account['status'])
-                    ) ?>
-                </p>
+                <div class="credit-account-values">
+                    <div class="credit-account-value">
+                        <span>Total Balance</span>
+
+                        <strong>
+                            $<?= number_format(
+                                (float) (
+                                    $account['balance']
+                                    ?? 0
+                                ),
+                                2
+                            ) ?>
+                        </strong>
+                    </div>
+
+                    <div class="credit-account-value">
+                        <span>Reserved</span>
+
+                        <strong>
+                            $<?= number_format(
+                                (float) (
+                                    $account[
+                                        'reserved_balance'
+                                    ]
+                                    ?? 0
+                                ),
+                                2
+                            ) ?>
+                        </strong>
+                    </div>
+
+                    <div class="credit-account-value">
+                        <span>Status</span>
+
+                        <strong>
+                            <?= $escape(
+                                $label(
+                                    $account['status']
+                                )
+                            ) ?>
+                        </strong>
+                    </div>
+                </div>
             </article>
         <?php endforeach; ?>
     </section>
@@ -128,9 +176,29 @@ $label = static fn (mixed $value): string =>
                             </td>
 
                             <td>
-                                <?= $escape(
-                                    $label(
+                                <?php
+                                $transactionType =
+                                    (string) (
                                         $transaction['type']
+                                        ?? ''
+                                    );
+
+                                $typeLabels = [
+                                    'return_credit' =>
+                                        'Return Credit',
+                                    'checkout_redemption' =>
+                                        'Checkout Redemption',
+                                    'redemption_restore' =>
+                                        'Redemption Restore',
+                                ];
+                                ?>
+
+                                <?= $escape(
+                                    $typeLabels[
+                                        $transactionType
+                                    ]
+                                    ?? $label(
+                                        $transactionType
                                     )
                                 ) ?>
                             </td>
@@ -191,11 +259,25 @@ $label = static fn (mixed $value): string =>
                                 <?php endif; ?>
                             </td>
 
-                            <td class="credit-amount">
-                                +$<?= number_format(
-                                    (float) $transaction[
-                                        'amount'
-                                    ],
+                            <?php
+                            $transactionAmount = (float) (
+                                $transaction['amount']
+                                ?? 0
+                            );
+
+                            $amountClass =
+                                $transactionAmount < 0
+                                    ? 'debit'
+                                    : 'credit';
+                            ?>
+
+                            <td class="credit-amount <?= $escape(
+                                $amountClass
+                            ) ?>">
+                                <?= $transactionAmount < 0
+                                    ? '-'
+                                    : '+' ?>$<?= number_format(
+                                    abs($transactionAmount),
                                     2
                                 ) ?>
                             </td>

@@ -674,6 +674,11 @@ $router->get(
 );
 
 $router->post(
+    '/store/{store_slug}/checkout/store-credit',
+    [CheckoutController::class, 'storeCreditBalance']
+);
+
+$router->post(
     '/store/{store_slug}/checkout',
     [CheckoutController::class, 'store']
 );

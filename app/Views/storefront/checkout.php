@@ -14,6 +14,18 @@ $old = $old ?? [];
 $cartItems = $cartItems ?? [];
 $shippingMethods = $shippingMethods ?? [];
 $paymentMethods = $paymentMethods ?? [];
+$storeCredit = $storeCredit ?? [
+    'verified' => false,
+    'available_balance' => 0.0,
+    'currency' => 'USD',
+];
+
+$availableStoreCredit = round(
+    (float) (
+        $storeCredit['available_balance'] ?? 0
+    ),
+    2
+);
 
 $selectedShippingMethodId = (int) (
     $old['shipping_method_id']
@@ -135,7 +147,41 @@ $selectedScenario = strtolower(
     margin-top: 8px;
 }
 
+.store-credit-panel {
+    margin: 24px 0;
+    padding: 18px;
+    border: 1px solid #bbf7d0;
+    border-radius: 14px;
+    background: #f0fdf4;
+}
+
+.store-credit-panel h2 {
+    margin-top: 0;
+}
+
+.store-credit-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+}
+
+.store-credit-balance {
+    margin: 12px 0;
+    color: #166534;
+    font-weight: 800;
+}
+
+.store-credit-help {
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 @media (max-width: 640px) {
+    .store-credit-controls {
+        grid-template-columns: 1fr;
+    }
     .payment-method-option {
         padding: 14px;
     }
@@ -507,6 +553,112 @@ $selectedScenario = strtolower(
                     </div>
                 <?php endif; ?>
 
+
+                <section class="store-credit-panel">
+                    <h2>Store Credit</h2>
+
+                    <p class="store-credit-help">
+                        Enter the email address and postal
+                        code used on your prior order, then
+                        verify your available balance.
+                    </p>
+
+                    <div class="store-credit-controls">
+                        <div class="form-group">
+                            <label for="store_credit_amount">
+                                Amount to Apply
+                            </label>
+
+                            <input
+                                id="store_credit_amount"
+                                type="number"
+                                name="store_credit_amount"
+                                min="0"
+                                step="0.01"
+                                value="<?= $escape(
+                                    number_format(
+                                        (float) (
+                                            $old[
+                                                'store_credit_amount'
+                                            ] ?? 0
+                                        ),
+                                        2,
+                                        '.',
+                                        ''
+                                    )
+                                ) ?>"
+                                <?= $availableStoreCredit > 0
+                                    ? ''
+                                    : 'disabled' ?>
+                            >
+                        </div>
+
+                        <button
+                            type="button"
+                            id="check-store-credit"
+                            class="storefront-cart-button"
+                        >
+                            Check Balance
+                        </button>
+                    </div>
+
+                    <label
+                        class="payment-method-option"
+                        style="margin-top:12px;"
+                    >
+                        <input
+                            id="apply_store_credit"
+                            type="checkbox"
+                            name="apply_store_credit"
+                            value="1"
+                            <?= ! empty(
+                                $old['apply_store_credit']
+                            )
+                                ? 'checked'
+                                : '' ?>
+                            <?= $availableStoreCredit > 0
+                                ? ''
+                                : 'disabled' ?>
+                        >
+
+                        <span class="payment-method-content">
+                            <strong>Apply Store Credit</strong>
+
+                            <small>
+                                The server will cap the amount
+                                at the available balance and
+                                final order total.
+                            </small>
+                        </span>
+                    </label>
+
+                    <div
+                        id="store-credit-balance"
+                        class="store-credit-balance"
+                        data-available="<?= $escape(
+                            number_format(
+                                $availableStoreCredit,
+                                2,
+                                '.',
+                                ''
+                            )
+                        ) ?>"
+                    >
+                        <?php if (
+                            ! empty($storeCredit['verified'])
+                        ): ?>
+                            Available:
+                            $<?= number_format(
+                                $availableStoreCredit,
+                                2
+                            ) ?>
+                            USD
+                        <?php else: ?>
+                            Balance not verified.
+                        <?php endif; ?>
+                    </div>
+                </section>
+
                 <h2>Payment Method</h2>
 
                 <?php if (empty($paymentMethods)): ?>
@@ -540,7 +692,6 @@ $selectedScenario = strtolower(
                                     )
                                         ? 'checked'
                                         : '' ?>
-                                    required
                                 >
 
                                 <span
@@ -638,9 +789,10 @@ $selectedScenario = strtolower(
                 <?php endif; ?>
 
                 <div class="checkout-security-note">
-                    The final tax and total are recalculated
-                    on the server. Only an approved payment
-                    reduces inventory and completes the order.
+                    The final tax, store credit, and payment
+                    amount are recalculated on the server.
+                    Credit is reserved during checkout and is
+                    released automatically if payment fails.
                 </div>
 
                 <button
@@ -648,12 +800,11 @@ $selectedScenario = strtolower(
                     class="storefront-cart-button"
                     <?= (
                         empty($shippingMethods)
-                        || empty($paymentMethods)
                     )
                         ? 'disabled'
                         : '' ?>
                 >
-                    Pay &amp; Place Order
+                    Place Paid Order
                 </button>
             </form>
         </section>
@@ -716,6 +867,25 @@ $selectedScenario = strtolower(
                     </td>
                 </tr>
 
+                <tr>
+                    <th>Store Credit</th>
+
+                    <td id="checkout-store-credit">
+                        $0.00
+                    </td>
+                </tr>
+
+                <tr>
+                    <th>Payment Due</th>
+
+                    <td id="checkout-payment-due">
+                        $<?= number_format(
+                            (float) $subtotal,
+                            2
+                        ) ?>
+                    </td>
+                </tr>
+
                 <tr class="summary-total">
                     <th>Estimated Before Tax</th>
 
@@ -757,6 +927,39 @@ document.addEventListener('DOMContentLoaded', () => {
         'checkout-estimated-total'
     );
 
+    const storeCreditOutput = document.getElementById(
+        'checkout-store-credit'
+    );
+
+    const paymentDueOutput = document.getElementById(
+        'checkout-payment-due'
+    );
+
+    const storeCreditBalance = document.getElementById(
+        'store-credit-balance'
+    );
+
+    const storeCreditAmount = document.getElementById(
+        'store_credit_amount'
+    );
+
+    const applyStoreCredit = document.getElementById(
+        'apply_store_credit'
+    );
+
+    const checkStoreCredit = document.getElementById(
+        'check-store-credit'
+    );
+
+    const emailInput = document.getElementById('email');
+    const postalInput = document.getElementById(
+        'postal_code'
+    );
+
+    let availableStoreCredit = Number(
+        storeCreditBalance?.dataset.available || 0
+    );
+
     const shippingInputs = document.querySelectorAll(
         'input[name="shipping_method_id"]'
     );
@@ -779,7 +982,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ).format(amount)
     );
 
-    const updateShipping = () => {
+    const updateSettlement = () => {
         const selected = document.querySelector(
             'input[name="shipping_method_id"]:checked'
         );
@@ -788,6 +991,25 @@ document.addEventListener('DOMContentLoaded', () => {
             ? Number(selected.dataset.price || 0)
             : 0;
 
+        const estimatedTotal =
+            subtotal + shipping;
+
+        const requestedCredit =
+            applyStoreCredit?.checked
+                ? Math.max(
+                    0,
+                    Number(
+                        storeCreditAmount?.value || 0
+                    )
+                )
+                : 0;
+
+        const appliedCredit = Math.min(
+            requestedCredit,
+            availableStoreCredit,
+            estimatedTotal
+        );
+
         if (shippingOutput) {
             shippingOutput.textContent =
                 money(shipping);
@@ -795,7 +1017,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (estimatedOutput) {
             estimatedOutput.textContent =
-                money(subtotal + shipping);
+                money(estimatedTotal);
+        }
+
+        if (storeCreditOutput) {
+            storeCreditOutput.textContent =
+                money(appliedCredit);
+        }
+
+        if (paymentDueOutput) {
+            paymentDueOutput.textContent =
+                money(
+                    Math.max(
+                        0,
+                        estimatedTotal - appliedCredit
+                    )
+                );
         }
     };
 
@@ -815,7 +1052,7 @@ document.addEventListener('DOMContentLoaded', () => {
     shippingInputs.forEach((input) => {
         input.addEventListener(
             'change',
-            updateShipping
+            updateSettlement
         );
     });
 
@@ -826,7 +1063,172 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     });
 
-    updateShipping();
+
+    storeCreditAmount?.addEventListener(
+        'input',
+        updateSettlement
+    );
+
+    applyStoreCredit?.addEventListener(
+        'change',
+        () => {
+            if (
+                applyStoreCredit.checked
+                && storeCreditAmount
+                && Number(
+                    storeCreditAmount.value || 0
+                ) <= 0
+            ) {
+                const selectedShipping =
+                    document.querySelector(
+                        'input[name="shipping_method_id"]:checked'
+                    );
+
+                const shipping = selectedShipping
+                    ? Number(
+                        selectedShipping.dataset.price
+                        || 0
+                    )
+                    : 0;
+
+                storeCreditAmount.value =
+                    Math.min(
+                        availableStoreCredit,
+                        subtotal + shipping
+                    ).toFixed(2);
+            }
+
+            updateSettlement();
+        }
+    );
+
+    checkStoreCredit?.addEventListener(
+        'click',
+        async () => {
+            const email = emailInput?.value.trim() || '';
+            const postalCode =
+                postalInput?.value.trim() || '';
+
+            if (! email || ! postalCode) {
+                storeCreditBalance.textContent =
+                    'Enter your email and postal code first.';
+                return;
+            }
+
+            checkStoreCredit.disabled = true;
+            storeCreditBalance.textContent =
+                'Checking store credit…';
+
+            try {
+                const body = new URLSearchParams({
+                    _csrf_token:
+                        <?= json_encode($csrf_token) ?>,
+                    email,
+                    postal_code: postalCode
+                });
+
+                const response = await fetch(
+                    '/store/'
+                    + <?= json_encode(
+                        (string) $store['slug']
+                    ) ?>
+                    + '/checkout/store-credit',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type':
+                                'application/x-www-form-urlencoded'
+                        },
+                        body: body.toString()
+                    }
+                );
+
+                const result = await response.json();
+
+                if (! response.ok || ! result.ok) {
+                    throw new Error(
+                        result.message
+                        || 'Unable to check store credit.'
+                    );
+                }
+
+                availableStoreCredit = Number(
+                    result.available_balance || 0
+                );
+
+                storeCreditBalance.dataset.available =
+                    String(availableStoreCredit);
+
+                storeCreditBalance.textContent =
+                    result.verified
+                        ? 'Available: '
+                            + money(
+                                availableStoreCredit
+                            )
+                            + ' USD'
+                        : result.message;
+
+                if (storeCreditAmount) {
+                    storeCreditAmount.disabled =
+                        availableStoreCredit <= 0;
+                    storeCreditAmount.max =
+                        String(availableStoreCredit);
+
+                    const currentAmount = Number(
+                        storeCreditAmount.value || 0
+                    );
+
+                    if (
+                        currentAmount <= 0
+                        && availableStoreCredit > 0
+                    ) {
+                        const selectedShipping =
+                            document.querySelector(
+                                'input[name="shipping_method_id"]:checked'
+                            );
+
+                        const shipping = selectedShipping
+                            ? Number(
+                                selectedShipping.dataset.price
+                                || 0
+                            )
+                            : 0;
+
+                        storeCreditAmount.value =
+                            Math.min(
+                                availableStoreCredit,
+                                subtotal + shipping
+                            ).toFixed(2);
+                    } else if (
+                        currentAmount
+                        > availableStoreCredit
+                    ) {
+                        storeCreditAmount.value =
+                            availableStoreCredit.toFixed(2);
+                    }
+                }
+
+                if (applyStoreCredit) {
+                    applyStoreCredit.disabled =
+                        availableStoreCredit <= 0;
+
+                    if (availableStoreCredit <= 0) {
+                        applyStoreCredit.checked = false;
+                    }
+                }
+
+                updateSettlement();
+            } catch (error) {
+                storeCreditBalance.textContent =
+                    error.message
+                    || 'Unable to check store credit.';
+            } finally {
+                checkStoreCredit.disabled = false;
+            }
+        }
+    );
+
+    updateSettlement();
     updatePaymentPanel();
 });
 </script>

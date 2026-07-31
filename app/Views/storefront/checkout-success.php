@@ -74,14 +74,14 @@ $customerName = trim(
         class="checkout-success-panel order-confirmation-panel"
     >
         <p class="eyebrow dark-eyebrow">
-            Payment approved
+            Order paid
         </p>
 
         <h1>Thank You</h1>
 
         <p>
-            Your payment was approved and your order
-            has been placed successfully.
+            Your order has been paid and placed
+            successfully.
         </p>
 
         <div class="order-confirmation-number">
@@ -93,13 +93,31 @@ $customerName = trim(
         </div>
 
         <div class="confirmation-payment-note">
-            <strong>
-                <?= $escape(
-                    $order['payment_method_name']
-                    ?? 'Payment'
-                ) ?>
-            </strong>
-            processed
+            <strong>Settlement complete</strong>
+            <br>
+            Store credit:
+            $<?= number_format(
+                (float) (
+                    $order[
+                        'store_credit_applied_amount'
+                    ] ?? 0
+                ),
+                2
+            ) ?>
+            USD
+            <br>
+            External payment:
+            $<?= number_format(
+                (float) (
+                    $order[
+                        'external_payment_amount'
+                    ] ?? 0
+                ),
+                2
+            ) ?>
+            USD
+            <br>
+            Order total:
             $<?= number_format(
                 (float) (
                     $order['amount_paid']

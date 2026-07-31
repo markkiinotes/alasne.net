@@ -61,6 +61,15 @@ $grandTotal = (float) (
     ?? $order['total']
     ?? 0
 );
+
+$storeCreditApplied = (float) (
+    $order['store_credit_applied_amount'] ?? 0
+);
+
+$externalPaymentAmount = (float) (
+    $order['external_payment_amount']
+    ?? max(0, $grandTotal - $storeCreditApplied)
+);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -723,8 +732,30 @@ $grandTotal = (float) (
                 </strong>
             </div>
 
+            <div class="summary-row">
+                <span>Store Credit Applied</span>
+
+                <strong>
+                    -$<?= number_format(
+                        $storeCreditApplied,
+                        2
+                    ) ?>
+                </strong>
+            </div>
+
+            <div class="summary-row">
+                <span>External Payment</span>
+
+                <strong>
+                    $<?= number_format(
+                        $externalPaymentAmount,
+                        2
+                    ) ?>
+                </strong>
+            </div>
+
             <div class="summary-row total">
-                <span>Total</span>
+                <span>Total Settled</span>
 
                 <strong>
                     $<?= number_format(

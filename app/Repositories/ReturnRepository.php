@@ -163,6 +163,9 @@ class ReturnRepository
                 o.currency AS order_currency,
                 o.amount_paid,
                 o.amount_refunded,
+                o.store_credit_applied_amount,
+                o.store_credit_restored_amount,
+                o.external_payment_amount,
                 o.grand_total,
                 eo.order_number AS exchange_order_number,
                 eo.status AS exchange_order_status,
@@ -806,6 +809,36 @@ class ReturnRepository
             'resolution_notes' =>
                 $this->nullable($notes),
             'refund_status' => $refundStatus,
+        ]);
+    }
+
+
+    public function setTenderRefundAllocation(
+        int $returnId,
+        float $creditRestoredAmount,
+        float $externalRefundAmount
+    ): void {
+        $stmt = $this->db->prepare("
+            UPDATE returns
+            SET
+                redeemed_credit_restored_amount =
+                    :credit_restored_amount,
+                external_refund_amount =
+                    :external_refund_amount,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $returnId,
+            'credit_restored_amount' =>
+                $this->money(
+                    $creditRestoredAmount
+                ),
+            'external_refund_amount' =>
+                $this->money(
+                    $externalRefundAmount
+                ),
         ]);
     }
 
