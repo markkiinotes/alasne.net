@@ -14,11 +14,14 @@ use App\Controllers\Admin\ReturnController;
 use App\Controllers\Admin\ReturnPolicyController;
 use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
+use App\Controllers\Admin\ProductSupplierController;
+use App\Controllers\Admin\PurchaseOrderController;
 use App\Controllers\Admin\RoleController;
 use App\Controllers\Admin\ShippingMethodController;
 use App\Controllers\Admin\TaxRuleController;
 use App\Controllers\Admin\StoreController;
 use App\Controllers\Admin\StoreCreditController;
+use App\Controllers\Admin\SupplierController;
 use App\Controllers\Admin\UserController;
 use App\Controllers\AuthController;
 use App\Controllers\CarrierWebhookController;
@@ -317,6 +320,36 @@ $router
     ->middleware('permission:stores.manage');
 
 $router
+    ->get('/admin/suppliers', [SupplierController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/suppliers/create', [SupplierController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/suppliers', [SupplierController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/suppliers/{id}/edit', [SupplierController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/suppliers/{id}', [SupplierController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/suppliers/{id}', [SupplierController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
     ->get('/admin/stores/{id}/edit', [StoreController::class, 'edit'])
     ->middleware('auth')
     ->middleware('permission:stores.manage');
@@ -343,6 +376,30 @@ $router
 
 $router
     ->post('/admin/products', [ProductController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/products/{product_id}/suppliers',
+        [ProductSupplierController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/products/{product_id}/suppliers',
+        [ProductSupplierController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/products/{product_id}/suppliers/{id}/delete',
+        [ProductSupplierController::class, 'destroy']
+    )
     ->middleware('auth')
     ->middleware('permission:products.manage');
 
@@ -539,6 +596,54 @@ $router
     ->get(
         '/admin/orders/{id}/invoice',
         [OrderController::class, 'invoice']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/orders/{order_id}/dropship',
+        [PurchaseOrderController::class, 'orderOverview']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{order_id}/dropship/route',
+        [PurchaseOrderController::class, 'routeOrder']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{order_id}/dropship/exceptions/{id}/resolve',
+        [PurchaseOrderController::class, 'resolveException']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/purchase-orders',
+        [PurchaseOrderController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/purchase-orders/{id}',
+        [PurchaseOrderController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/purchase-orders/{id}',
+        [PurchaseOrderController::class, 'show']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');

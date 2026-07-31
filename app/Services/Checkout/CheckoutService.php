@@ -9,6 +9,7 @@ use App\Repositories\PaymentTransactionRepository;
 use App\Repositories\StoreCreditRepository;
 use App\Repositories\TaxRuleRepository;
 use App\Services\Mail\EmailOutboxSender;
+use App\Services\Dropshipping\DropshipFulfillmentService;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
 use App\Services\Payments\PaymentResult;
 use App\Services\Payments\Providers\TestPaymentProvider;
@@ -23,7 +24,8 @@ class CheckoutService
         private TaxRuleRepository $taxRules,
         private PaymentMethodRepository $paymentMethods,
         private PaymentTransactionRepository $paymentTransactions,
-        private StoreCreditRepository $storeCredits
+        private StoreCreditRepository $storeCredits,
+        private DropshipFulfillmentService $dropshipFulfillment
     ) {
     }
 
@@ -517,6 +519,29 @@ class CheckoutService
             }
 
             throw $exception;
+        }
+
+        if (
+            $paymentFailureMessage === null
+            && $orderId > 0
+        ) {
+            try {
+                /*
+                 * Supplier routing is intentionally executed
+                 * after the customer-order transaction commits.
+                 * A supplier-mapping problem must never reverse
+                 * an approved payment or a completed checkout.
+                 */
+                $this->dropshipFulfillment
+                    ->routePaidOrder($orderId);
+            } catch (\Throwable $routingException) {
+                $this->dropshipFulfillment
+                    ->recordAutomationFailure(
+                        $orderId,
+                        $routingException->getMessage()
+                            ?: 'Automatic supplier routing failed.'
+                    );
+            }
         }
 
         if ($paymentFailureMessage !== null) {
