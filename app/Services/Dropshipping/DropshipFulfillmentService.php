@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dropshipping;
 
 use App\Repositories\ProductSupplierRepository;
+use App\Services\Suppliers\SupplierSubmissionService;
 use PDO;
 use RuntimeException;
 
@@ -12,7 +13,8 @@ class DropshipFulfillmentService
 {
     public function __construct(
         private PDO $db,
-        private ProductSupplierRepository $mappings
+        private ProductSupplierRepository $mappings,
+        private SupplierSubmissionService $submissions
     ) {
     }
 
@@ -101,6 +103,30 @@ class DropshipFulfillmentService
                 $this->recalculatePurchaseOrder(
                     $purchaseOrderId
                 );
+
+                try {
+                    $this->submissions
+                        ->autoPrepareForPurchaseOrder(
+                            $purchaseOrderId
+                        );
+                } catch (\Throwable $submissionError) {
+                    $this->createException(
+                        (int) $order['store_id'],
+                        $orderId,
+                        null,
+                        null,
+                        'supplier_submission_prepare_failed_'
+                            . (int) $supplierId,
+                        'Purchase order '
+                            . $purchaseOrderId
+                            . ' was routed, but its supplier submission could not be prepared: '
+                            . (
+                                $submissionError
+                                    ->getMessage()
+                                ?: 'Unknown preparation error.'
+                            )
+                    );
+                }
             }
 
             $summary = $this->recalculateOrder(
@@ -199,9 +225,25 @@ class DropshipFulfillmentService
     private function lockOrder(int $orderId): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT *
-            FROM orders
-            WHERE id = :id
+            SELECT
+                o.*,
+                NULLIF(TRIM(CONCAT(
+                    COALESCE(c.first_name, ''),
+                    ' ',
+                    COALESCE(c.last_name, '')
+                )), '') AS ship_to_name,
+                c.email AS ship_to_email,
+                c.phone AS ship_to_phone,
+                c.address_line_1 AS ship_to_address_line_1,
+                c.address_line_2 AS ship_to_address_line_2,
+                c.city AS ship_to_city,
+                c.state AS ship_to_state,
+                c.postal_code AS ship_to_postal_code,
+                c.country AS ship_to_country
+            FROM orders o
+            LEFT JOIN customers c
+                ON c.id = o.customer_id
+            WHERE o.id = :id
             LIMIT 1
             FOR UPDATE
         ");
@@ -265,11 +307,21 @@ class DropshipFulfillmentService
             INSERT INTO purchase_orders (
                 store_id, supplier_id, order_id,
                 purchase_order_number, status, currency,
-                expected_ship_at, created_at, updated_at
+                expected_ship_at,
+                ship_to_name, ship_to_email, ship_to_phone,
+                ship_to_address_line_1, ship_to_address_line_2,
+                ship_to_city, ship_to_state,
+                ship_to_postal_code, ship_to_country,
+                created_at, updated_at
             ) VALUES (
                 :store_id, :supplier_id, :order_id,
                 :purchase_order_number, 'pending', :currency,
-                :expected_ship_at, NOW(), NOW()
+                :expected_ship_at,
+                :ship_to_name, :ship_to_email, :ship_to_phone,
+                :ship_to_address_line_1, :ship_to_address_line_2,
+                :ship_to_city, :ship_to_state,
+                :ship_to_postal_code, :ship_to_country,
+                NOW(), NOW()
             )
         ");
         $stmt->execute([
@@ -279,6 +331,18 @@ class DropshipFulfillmentService
             'purchase_order_number' => $number,
             'currency' => strtoupper((string) ($candidate['currency'] ?? 'USD')),
             'expected_ship_at' => $expectedShipAt,
+            'ship_to_name' => $order['ship_to_name'] ?? null,
+            'ship_to_email' => $order['ship_to_email'] ?? null,
+            'ship_to_phone' => $order['ship_to_phone'] ?? null,
+            'ship_to_address_line_1' =>
+                $order['ship_to_address_line_1'] ?? null,
+            'ship_to_address_line_2' =>
+                $order['ship_to_address_line_2'] ?? null,
+            'ship_to_city' => $order['ship_to_city'] ?? null,
+            'ship_to_state' => $order['ship_to_state'] ?? null,
+            'ship_to_postal_code' =>
+                $order['ship_to_postal_code'] ?? null,
+            'ship_to_country' => $order['ship_to_country'] ?? null,
         ]);
         $id = (int) $this->db->lastInsertId();
 

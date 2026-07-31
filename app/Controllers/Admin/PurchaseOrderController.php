@@ -7,6 +7,7 @@ namespace App\Controllers\Admin;
 use App\Core\Controller;
 use App\Core\Request;
 use App\Repositories\PurchaseOrderRepository;
+use App\Repositories\SupplierSubmissionRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Dropshipping\DropshipFulfillmentService;
 
@@ -14,6 +15,7 @@ class PurchaseOrderController extends Controller
 {
     public function __construct(
         private PurchaseOrderRepository $purchaseOrders,
+        private SupplierSubmissionRepository $submissions,
         private DropshipFulfillmentService $fulfillment,
         private CsrfService $csrf
     ) {
@@ -90,6 +92,9 @@ class PurchaseOrderController extends Controller
             'purchaseOrder' => $po,
             'items' => $this->purchaseOrders->items($id),
             'events' => $this->purchaseOrders->events($id),
+            'submission' =>
+                $this->submissions
+                    ->forPurchaseOrder($id),
             'csrf_token' => $this->csrf->token(),
             'success' => $this->flash('purchase_orders_success'),
             'error' => $this->flash('purchase_orders_error'),

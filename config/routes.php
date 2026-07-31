@@ -22,6 +22,8 @@ use App\Controllers\Admin\TaxRuleController;
 use App\Controllers\Admin\StoreController;
 use App\Controllers\Admin\StoreCreditController;
 use App\Controllers\Admin\SupplierController;
+use App\Controllers\Admin\SupplierIntegrationController;
+use App\Controllers\Admin\SupplierSubmissionController;
 use App\Controllers\Admin\UserController;
 use App\Controllers\AuthController;
 use App\Controllers\CarrierWebhookController;
@@ -335,6 +337,46 @@ $router
     ->middleware('permission:products.manage');
 
 $router
+    ->get(
+        '/admin/suppliers/{supplier_id}/integration',
+        [SupplierIntegrationController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/suppliers/{supplier_id}/integration',
+        [SupplierIntegrationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/suppliers/{supplier_id}/integration/import',
+        [SupplierIntegrationController::class, 'importCsv']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/suppliers/{supplier_id}/integration/template',
+        [SupplierIntegrationController::class, 'template']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/suppliers/{supplier_id}/integration/sync-runs/{run_id}',
+        [SupplierIntegrationController::class, 'syncRun']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
     ->get('/admin/suppliers/{id}/edit', [SupplierController::class, 'edit'])
     ->middleware('auth')
     ->middleware('permission:products.manage');
@@ -620,6 +662,46 @@ $router
     ->post(
         '/admin/orders/{order_id}/dropship/exceptions/{id}/resolve',
         [PurchaseOrderController::class, 'resolveException']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-submissions',
+        [SupplierSubmissionController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/purchase-orders/{purchase_order_id}/submission/prepare',
+        [SupplierSubmissionController::class, 'prepare']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-submissions/{id}/export',
+        [SupplierSubmissionController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/supplier-submissions/{id}/status',
+        [SupplierSubmissionController::class, 'updateStatus']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-submissions/{id}',
+        [SupplierSubmissionController::class, 'show']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');

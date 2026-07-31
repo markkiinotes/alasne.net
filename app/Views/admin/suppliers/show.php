@@ -52,6 +52,15 @@ $escape = static fn (mixed $value): string =>
         >
             Edit Supplier
         </a>
+
+        <a
+            href="/admin/suppliers/<?= $escape(
+                $supplier['id']
+            ) ?>/integration"
+            class="button-primary"
+        >
+            Manage Integration
+        </a>
         <a
             href="/admin/suppliers"
             class="button-muted"

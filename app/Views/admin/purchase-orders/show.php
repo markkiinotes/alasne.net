@@ -30,6 +30,118 @@ $label = static fn (string $value): string => ucwords(str_replace('_',' ',$value
 </section>
 <br>
 <section class="panel">
+    <div class="table-header">
+        <div>
+            <h2>Supplier Submission</h2>
+            <p>
+                Prepare, export, and audit the supplier-side
+                order transmission independently from customer
+                payment.
+            </p>
+        </div>
+
+        <a
+            href="/admin/supplier-submissions"
+            class="button-muted"
+        >
+            Submission Queue
+        </a>
+    </div>
+
+    <?php if (! empty($submission)): ?>
+        <table class="detail-table">
+            <tr>
+                <th>Status</th>
+                <td>
+                    <?= $escape(
+                        $label(
+                            $submission['status']
+                        )
+                    ) ?>
+                </td>
+            </tr>
+            <tr>
+                <th>Adapter</th>
+                <td>
+                    <?= $escape(
+                        $label(
+                            $submission[
+                                'provider_code'
+                            ]
+                        )
+                    ) ?>
+                </td>
+            </tr>
+            <tr>
+                <th>Channel</th>
+                <td>
+                    <?= $escape(
+                        $label(
+                            $submission['channel']
+                        )
+                    ) ?>
+                </td>
+            </tr>
+            <tr>
+                <th>Prepared</th>
+                <td>
+                    <?= $escape(
+                        $submission['prepared_at']
+                    ) ?>
+                </td>
+            </tr>
+        </table>
+
+        <div class="form-actions">
+            <a
+                href="/admin/supplier-submissions/<?= $escape(
+                    $submission['id']
+                ) ?>"
+                class="button-primary"
+            >
+                Open Submission
+            </a>
+
+            <a
+                href="/admin/supplier-submissions/<?= $escape(
+                    $submission['id']
+                ) ?>/export"
+                class="button-muted"
+            >
+                Download Supplier CSV
+            </a>
+        </div>
+    <?php else: ?>
+        <p>
+            This purchase order does not have a prepared
+            supplier submission.
+        </p>
+
+        <form
+            method="POST"
+            action="/admin/purchase-orders/<?= $escape(
+                $purchaseOrder['id']
+            ) ?>/submission/prepare"
+        >
+            <input
+                type="hidden"
+                name="_csrf_token"
+                value="<?= $escape(
+                    $csrf_token
+                ) ?>"
+            >
+
+            <button
+                type="submit"
+                class="button-primary"
+            >
+                Prepare Supplier Submission
+            </button>
+        </form>
+    <?php endif; ?>
+</section>
+<br>
+<section class="panel">
     <h2>Supplier Items</h2>
     <table class="data-table">
         <thead><tr><th>Product</th><th>Store SKU</th><th>Supplier SKU</th><th>Qty</th><th>Unit Cost</th><th>Line Cost</th><th>Revenue</th><th>Profit</th></tr></thead>
