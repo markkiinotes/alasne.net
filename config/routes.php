@@ -24,6 +24,7 @@ use App\Controllers\Admin\TaxRuleController;
 use App\Controllers\Admin\StoreController;
 use App\Controllers\Admin\StoreCreditController;
 use App\Controllers\Admin\SupplierController;
+use App\Controllers\Admin\SupplierPerformanceController;
 use App\Controllers\Admin\SupplierIntegrationController;
 use App\Controllers\Admin\SupplierSubmissionController;
 use App\Controllers\Admin\UserController;
@@ -69,6 +70,38 @@ $router
     ->get(
         '/admin/dropshipping/export',
         [DropshippingOperationsController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-performance',
+        [SupplierPerformanceController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-performance/export',
+        [SupplierPerformanceController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/supplier-performance/{supplier_id}/review',
+        [SupplierPerformanceController::class, 'review']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-performance/{supplier_id}',
+        [SupplierPerformanceController::class, 'show']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');
