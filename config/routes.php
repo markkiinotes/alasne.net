@@ -15,6 +15,7 @@ use App\Controllers\Admin\ReturnController;
 use App\Controllers\Admin\ReturnPolicyController;
 use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
+use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
 use App\Controllers\Admin\RoleController;
@@ -71,6 +72,38 @@ $router
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/product-sourcing',
+        [ProductSourcingController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/product-sourcing/export',
+        [ProductSourcingController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/product-sourcing/rules',
+        [ProductSourcingController::class, 'saveRules']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/product-sourcing/reviews/{supplier_product_id}',
+        [ProductSourcingController::class, 'review']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
 
 $router
     ->get('/admin/users/{id}/edit', [UserController::class, 'edit'])
