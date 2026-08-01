@@ -25,6 +25,7 @@ use App\Controllers\Admin\StoreController;
 use App\Controllers\Admin\StoreCreditController;
 use App\Controllers\Admin\SupplierController;
 use App\Controllers\Admin\SupplierPerformanceController;
+use App\Controllers\Admin\TrackingReconciliationController;
 use App\Controllers\Admin\SupplierIntegrationController;
 use App\Controllers\Admin\SupplierSubmissionController;
 use App\Controllers\Admin\UserController;
@@ -70,6 +71,46 @@ $router
     ->get(
         '/admin/dropshipping/export',
         [DropshippingOperationsController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation',
+        [TrackingReconciliationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/tracking-reconciliation/upload',
+        [TrackingReconciliationController::class, 'upload']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation/template',
+        [TrackingReconciliationController::class, 'template']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation/queue/export',
+        [TrackingReconciliationController::class, 'exportQueue']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation/runs/{run_id}',
+        [TrackingReconciliationController::class, 'run']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');
