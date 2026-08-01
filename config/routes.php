@@ -15,6 +15,7 @@ use App\Controllers\Admin\ReturnController;
 use App\Controllers\Admin\ReturnPolicyController;
 use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
+use App\Controllers\Admin\ProductionReadinessController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -71,6 +72,38 @@ $router
     ->get(
         '/admin/dropshipping/export',
         [DropshippingOperationsController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/production-readiness',
+        [ProductionReadinessController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/production-readiness/run',
+        [ProductionReadinessController::class, 'run']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/production-readiness/export',
+        [ProductionReadinessController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/production-readiness/runs/{run_id}',
+        [ProductionReadinessController::class, 'show']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');
