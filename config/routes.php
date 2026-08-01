@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Controllers\Admin\CategoryController;
 use App\Controllers\Admin\CustomerController;
 use App\Controllers\Admin\DashboardController;
+use App\Controllers\Admin\DropshippingOperationsController;
 use App\Controllers\Admin\EmailOutboxController;
 use App\Controllers\Admin\InventoryController;
 use App\Controllers\Admin\OrderController;
@@ -54,6 +55,22 @@ $router
     ->get('/admin', [DashboardController::class, 'index'])
     ->middleware('auth')
     ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/dropshipping',
+        [DropshippingOperationsController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/dropshipping/export',
+        [DropshippingOperationsController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
 
 $router
     ->get('/admin/users/{id}/edit', [UserController::class, 'edit'])
