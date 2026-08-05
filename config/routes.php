@@ -18,6 +18,7 @@ use App\Controllers\Admin\ProductController;
 use App\Controllers\Admin\ProductionReadinessController;
 use App\Controllers\Admin\MultiStoreAutomationController;
 use App\Controllers\Admin\MissionControlNavigationController;
+use App\Controllers\Admin\ReportsKpiController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1246,6 +1247,23 @@ $router
         [MissionControlNavigationController::class, 'index']
     )
     ->middleware('auth');
+
+
+$router
+    ->get(
+        '/admin/reports',
+        [ReportsKpiController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/reports/export',
+        [ReportsKpiController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
 
 return $router;
 

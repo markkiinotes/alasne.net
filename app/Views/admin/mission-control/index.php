@@ -295,6 +295,9 @@ include __DIR__ . '/../partials/mission-control-breadcrumbs.php';
         <a href="/admin/dropshipping" class="button-muted">
             Operations
         </a>
+        <a href="/admin/reports" class="button-muted">
+            Reports
+        </a>
         <a href="/admin/production-readiness" class="button-muted">
             Readiness
         </a>

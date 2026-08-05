@@ -249,6 +249,13 @@ class MissionControlNavigationService
                         'stores.manage'
                     ),
                     $this->item(
+                        'Reports & KPI Center',
+                        '/admin/reports',
+                        'Sales, margin, supplier, operations, and readiness KPIs',
+                        null,
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Production Readiness',
                         '/admin/production-readiness',
                         'Security and launch readiness checks',
