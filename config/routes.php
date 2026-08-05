@@ -17,6 +17,7 @@ use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
 use App\Controllers\Admin\ProductionReadinessController;
 use App\Controllers\Admin\MultiStoreAutomationController;
+use App\Controllers\Admin\MissionControlNavigationController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1213,6 +1214,28 @@ $router
     )
     ->middleware('auth')
     ->middleware('permission:stores.manage');
+
+
+$router
+    ->get(
+        '/admin/mission-control',
+        [MissionControlNavigationController::class, 'index']
+    )
+    ->middleware('auth');
+
+$router
+    ->get(
+        '/admin/workflows',
+        [MissionControlNavigationController::class, 'index']
+    )
+    ->middleware('auth');
+
+$router
+    ->get(
+        '/admin/navigation',
+        [MissionControlNavigationController::class, 'index']
+    )
+    ->middleware('auth');
 
 return $router;
 
