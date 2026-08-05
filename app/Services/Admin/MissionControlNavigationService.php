@@ -81,6 +81,13 @@ class MissionControlNavigationService
                 'icon' => '⚙',
                 'items' => [
                     $this->item(
+                        'Legacy Dashboard',
+                        '/admin/dashboard',
+                        'Original Mission Control dashboard',
+                        null,
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Operations Command Center',
                         '/admin/dropshipping',
                         'Daily fulfillment view',

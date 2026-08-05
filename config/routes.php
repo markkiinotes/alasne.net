@@ -59,7 +59,17 @@ $router->post(
 $router->get('/', [HomeController::class, 'index']);
 
 $router
-    ->get('/admin', [DashboardController::class, 'index'])
+    ->get('/admin', [MissionControlNavigationController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get('/admin/dashboard', [DashboardController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get('/admin/legacy-dashboard', [DashboardController::class, 'index'])
     ->middleware('auth')
     ->middleware('permission:mission_control.view');
 

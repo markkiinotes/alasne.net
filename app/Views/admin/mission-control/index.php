@@ -289,6 +289,9 @@ include __DIR__ . '/../partials/mission-control-breadcrumbs.php';
     </div>
 
     <div class="table-actions">
+        <a href="/admin/dashboard" class="button-muted">
+            Legacy Dashboard
+        </a>
         <a href="/admin/dropshipping" class="button-muted">
             Operations
         </a>
