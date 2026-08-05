@@ -35,6 +35,7 @@ use App\Controllers\CarrierWebhookController;
 use App\Controllers\CartController;
 use App\Controllers\CheckoutController;
 use App\Controllers\CustomerReturnController;
+use App\Controllers\CustomerAccountController;
 use App\Controllers\HomeController;
 use App\Controllers\OrderTrackingController;
 use App\Controllers\ReturnPolicyPageController;
@@ -981,6 +982,46 @@ $router
     ->get('/admin/email-outbox/{id}', [EmailOutboxController::class, 'show'])
     ->middleware('auth')
     ->middleware('permission:orders.manage');
+
+$router->get(
+    '/store/{store_slug}/account',
+    [CustomerAccountController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/account/link',
+    [CustomerAccountController::class, 'requestLink']
+);
+
+$router->get(
+    '/store/{store_slug}/account/session/{token}',
+    [CustomerAccountController::class, 'session']
+);
+
+$router->get(
+    '/store/{store_slug}/account/dashboard',
+    [CustomerAccountController::class, 'dashboard']
+);
+
+$router->get(
+    '/store/{store_slug}/account/orders/{order_id}',
+    [CustomerAccountController::class, 'order']
+);
+
+$router->get(
+    '/store/{store_slug}/account/store-credit',
+    [CustomerAccountController::class, 'storeCredit']
+);
+
+$router->post(
+    '/store/{store_slug}/account/profile',
+    [CustomerAccountController::class, 'updateProfile']
+);
+
+$router->post(
+    '/store/{store_slug}/account/logout',
+    [CustomerAccountController::class, 'logout']
+);
 
 $router->get(
     '/store/{store_slug}/product/{product_slug}',
