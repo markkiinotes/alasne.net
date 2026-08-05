@@ -16,6 +16,7 @@ use App\Controllers\Admin\ReturnPolicyController;
 use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
 use App\Controllers\Admin\ProductionReadinessController;
+use App\Controllers\Admin\MultiStoreAutomationController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1141,4 +1142,77 @@ $router->get(
     [StorefrontController::class, 'show']
 );
 
+$router
+    ->get(
+        '/admin/multi-store-automation',
+        [MultiStoreAutomationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/export',
+        [MultiStoreAutomationController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/audit',
+        [MultiStoreAutomationController::class, 'saveAudit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/catalog-candidates/refresh',
+        [MultiStoreAutomationController::class, 'refreshCandidates']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/catalog-candidates/{candidate_id}',
+        [MultiStoreAutomationController::class, 'reviewCandidate']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/runs/{run_id}/export',
+        [MultiStoreAutomationController::class, 'exportRun']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/runs/{run_id}',
+        [MultiStoreAutomationController::class, 'run']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/{store_id}/profile',
+        [MultiStoreAutomationController::class, 'saveProfile']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/{store_id}',
+        [MultiStoreAutomationController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
 return $router;
+
