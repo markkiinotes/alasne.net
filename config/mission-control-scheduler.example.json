@@ -1,0 +1,15 @@
+{
+  "description": "Example local scheduler settings for Mission Control CLI Automation Runner.",
+  "default_command": "php scripts/mission-control-run-due.php --due",
+  "dry_run_command": "php scripts/mission-control-run-due.php --dry-run",
+  "json_command": "php scripts/mission-control-run-due.php --due --json",
+  "windows_task_scheduler": {
+    "program": "C:\\xampp\\php\\php.exe",
+    "arguments": "scripts\\mission-control-run-due.php --due",
+    "start_in": "C:\\xampp\\htdocs\\alasne.net",
+    "recommended_frequency": "Every 15 minutes"
+  },
+  "linux_cron": {
+    "example": "*/15 * * * * cd /var/www/alasne.net && php scripts/mission-control-run-due.php --due >> storage/logs/mission-control-scheduler.log 2>&1"
+  }
+}
