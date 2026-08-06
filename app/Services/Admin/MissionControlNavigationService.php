@@ -256,6 +256,13 @@ class MissionControlNavigationService
                         'mission_control.view'
                     ),
                     $this->item(
+                        'Alert Digest & Admin Briefing',
+                        '/admin/briefings',
+                        'Saved management briefings from alerts and KPIs',
+                        null,
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',

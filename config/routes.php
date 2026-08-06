@@ -20,6 +20,7 @@ use App\Controllers\Admin\MultiStoreAutomationController;
 use App\Controllers\Admin\MissionControlNavigationController;
 use App\Controllers\Admin\ReportsKpiController;
 use App\Controllers\Admin\MissionControlAlertController;
+use App\Controllers\Admin\MissionControlBriefingController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1335,6 +1336,55 @@ $router
     ->post(
         '/admin/alerts/{alert_id}',
         [MissionControlAlertController::class, 'updateAlert']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/briefings',
+        [MissionControlBriefingController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/briefings/export',
+        [MissionControlBriefingController::class, 'exportPreview']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/briefings',
+        [MissionControlBriefingController::class, 'save']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/briefings/{briefing_id}/export',
+        [MissionControlBriefingController::class, 'exportSaved']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/briefings/{briefing_id}/delete',
+        [MissionControlBriefingController::class, 'delete']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/briefings/{briefing_id}',
+        [MissionControlBriefingController::class, 'show']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');
