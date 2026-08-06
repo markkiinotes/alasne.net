@@ -263,6 +263,13 @@ class MissionControlNavigationService
                         'mission_control.view'
                     ),
                     $this->item(
+                        'Scheduled Operations',
+                        '/admin/scheduled-operations',
+                        'Run alert scans, briefing snapshots, and KPI checkpoints',
+                        $this->badge('Due', $this->dueScheduledOperations()),
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',
@@ -570,6 +577,22 @@ class MissionControlNavigationService
         );
     }
 
+
+
+    private function dueScheduledOperations(): int
+    {
+        if (! $this->tableExists('mission_control_scheduled_tasks')) {
+            return 0;
+        }
+
+        return $this->countWhere(
+            'mission_control_scheduled_tasks',
+            "is_enabled = 1
+             AND run_if_due = 1
+             AND next_run_at IS NOT NULL
+             AND next_run_at <= NOW()"
+        );
+    }
 
     private function openMissionControlAlerts(): int
     {

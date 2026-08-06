@@ -21,6 +21,7 @@ use App\Controllers\Admin\MissionControlNavigationController;
 use App\Controllers\Admin\ReportsKpiController;
 use App\Controllers\Admin\MissionControlAlertController;
 use App\Controllers\Admin\MissionControlBriefingController;
+use App\Controllers\Admin\MissionControlScheduledOperationController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1385,6 +1386,55 @@ $router
     ->get(
         '/admin/briefings/{briefing_id}',
         [MissionControlBriefingController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/scheduled-operations',
+        [MissionControlScheduledOperationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/scheduled-operations/export',
+        [MissionControlScheduledOperationController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/scheduled-operations/run-due',
+        [MissionControlScheduledOperationController::class, 'runDue']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/scheduled-operations/{task_id}/run',
+        [MissionControlScheduledOperationController::class, 'runTask']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/scheduled-operations/{task_id}',
+        [MissionControlScheduledOperationController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/scheduled-operations/{task_id}',
+        [MissionControlScheduledOperationController::class, 'update']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');
