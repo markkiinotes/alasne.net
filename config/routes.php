@@ -19,6 +19,7 @@ use App\Controllers\Admin\ProductionReadinessController;
 use App\Controllers\Admin\MultiStoreAutomationController;
 use App\Controllers\Admin\MissionControlNavigationController;
 use App\Controllers\Admin\ReportsKpiController;
+use App\Controllers\Admin\MissionControlAlertController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1261,6 +1262,79 @@ $router
     ->get(
         '/admin/reports/export',
         [ReportsKpiController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/alerts',
+        [MissionControlAlertController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/alerts/export',
+        [MissionControlAlertController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/scan',
+        [MissionControlAlertController::class, 'scan']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/alerts/rules/create',
+        [MissionControlAlertController::class, 'ruleForm']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/rules',
+        [MissionControlAlertController::class, 'saveRule']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/rules/{rule_id}/delete',
+        [MissionControlAlertController::class, 'deleteRule']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/alerts/rules/{rule_id}',
+        [MissionControlAlertController::class, 'ruleForm']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/rules/{rule_id}',
+        [MissionControlAlertController::class, 'saveRule']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/{alert_id}',
+        [MissionControlAlertController::class, 'updateAlert']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');

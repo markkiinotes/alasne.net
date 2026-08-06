@@ -249,6 +249,13 @@ class MissionControlNavigationService
                         'stores.manage'
                     ),
                     $this->item(
+                        'Alerts & Notification Center',
+                        '/admin/alerts',
+                        'Proactive alerts for operational and business risks',
+                        $this->badge('Open', $this->openMissionControlAlerts()),
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',
@@ -553,6 +560,19 @@ class MissionControlNavigationService
             'stores',
             "automation_health_score IS NOT NULL
              AND automation_health_score < 70"
+        );
+    }
+
+
+    private function openMissionControlAlerts(): int
+    {
+        if (! $this->tableExists('mission_control_alerts')) {
+            return 0;
+        }
+
+        return $this->countWhere(
+            'mission_control_alerts',
+            "status IN ('open', 'acknowledged')"
         );
     }
 
