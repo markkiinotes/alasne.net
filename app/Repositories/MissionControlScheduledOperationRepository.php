@@ -360,6 +360,7 @@ class MissionControlScheduledOperationRepository
             'alert_scan',
             'briefing_snapshot',
             'kpi_checkpoint',
+            'email_queue',
         ];
     }
 

@@ -22,6 +22,7 @@ use App\Controllers\Admin\ReportsKpiController;
 use App\Controllers\Admin\MissionControlAlertController;
 use App\Controllers\Admin\MissionControlBriefingController;
 use App\Controllers\Admin\MissionControlScheduledOperationController;
+use App\Controllers\Admin\MissionControlEmailQueueController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1435,6 +1436,31 @@ $router
     ->post(
         '/admin/scheduled-operations/{task_id}',
         [MissionControlScheduledOperationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/email-queue',
+        [MissionControlEmailQueueController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/email-queue/export',
+        [MissionControlEmailQueueController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/email-queue/process',
+        [MissionControlEmailQueueController::class, 'process']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');

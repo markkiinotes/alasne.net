@@ -304,6 +304,9 @@ include __DIR__ . '/../partials/mission-control-breadcrumbs.php';
         <a href="/admin/scheduled-operations" class="button-muted">
             Schedule
         </a>
+        <a href="/admin/email-queue" class="button-muted">
+            Email Queue
+        </a>
         <a href="/admin/reports" class="button-muted">
             Reports
         </a>

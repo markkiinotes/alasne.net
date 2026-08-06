@@ -12,7 +12,8 @@ class MissionControlScheduledOperationService
     public function __construct(
         private MissionControlScheduledOperationRepository $scheduled,
         private MissionControlAlertService $alerts,
-        private MissionControlBriefingService $briefings
+        private MissionControlBriefingService $briefings,
+        private MissionControlEmailQueueService $emailQueue
     ) {
     }
 
@@ -73,6 +74,7 @@ class MissionControlScheduledOperationService
                 'alert_scan' => $this->runAlertScan($task),
                 'briefing_snapshot' => $this->runBriefingSnapshot($task),
                 'kpi_checkpoint' => $this->runKpiCheckpoint($task),
+                'email_queue' => $this->runEmailQueue($task),
                 default => throw new RuntimeException(
                     'Unsupported scheduled task type: '
                     . (string) $task['task_type']
@@ -174,6 +176,37 @@ class MissionControlScheduledOperationService
                 . (int) ($metrics['tracking_gaps'] ?? 0)
                 . ' tracking gap(s).',
             'metrics' => $metrics,
+        ];
+    }
+
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runEmailQueue(array $task): array
+    {
+        $result = $this->emailQueue->process([
+            'limit' => 25,
+            'transport' => $_ENV['EMAIL_QUEUE_TRANSPORT'] ?? 'log',
+        ]);
+
+        return [
+            'summary' =>
+                (int) $result['processed']
+                . ' email(s) processed; '
+                . (int) $result['logged']
+                . ' logged, '
+                . (int) $result['sent']
+                . ' sent, '
+                . (int) $result['failed']
+                . ' failed.',
+            'metrics' => [
+                'processed' => (int) $result['processed'],
+                'logged' => (int) $result['logged'],
+                'sent' => (int) $result['sent'],
+                'failed' => (int) $result['failed'],
+                'transport' => (string) $result['transport'],
+            ],
         ];
     }
 

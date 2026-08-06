@@ -270,6 +270,13 @@ class MissionControlNavigationService
                         'mission_control.view'
                     ),
                     $this->item(
+                        'Email Queue Processing',
+                        '/admin/email-queue',
+                        'Process operational email outbox messages and audit attempts',
+                        $this->badge('Pending', $this->pendingEmailQueueMessages()),
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',
@@ -578,6 +585,19 @@ class MissionControlNavigationService
     }
 
 
+
+
+    private function pendingEmailQueueMessages(): int
+    {
+        if (! $this->tableExists('email_outbox')) {
+            return 0;
+        }
+
+        return $this->countWhere(
+            'email_outbox',
+            "status IN ('pending', 'queued', 'ready', 'failed')"
+        );
+    }
 
     private function dueScheduledOperations(): int
     {
