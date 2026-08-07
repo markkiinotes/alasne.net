@@ -26,6 +26,7 @@ use App\Controllers\Admin\MissionControlEmailQueueController;
 use App\Controllers\Admin\MissionControlEmailDeliveryController;
 use App\Controllers\Admin\MissionControlNotificationTemplateController;
 use App\Controllers\Admin\MissionControlNotificationDispatchController;
+use App\Controllers\Admin\MissionControlNotificationAutomationController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1555,6 +1556,39 @@ $router
     ->post(
         '/admin/notification-dispatches/queue',
         [MissionControlNotificationDispatchController::class, 'queue']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-automations',
+        [MissionControlNotificationAutomationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-automations/export',
+        [MissionControlNotificationAutomationController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-automations/{rule_id}/test',
+        [MissionControlNotificationAutomationController::class, 'test']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-automations/{rule_id}',
+        [MissionControlNotificationAutomationController::class, 'update']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');

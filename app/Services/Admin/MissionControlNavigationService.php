@@ -298,6 +298,13 @@ class MissionControlNavigationService
                         'mission_control.view'
                     ),
                     $this->item(
+                        'Notification Automation Rules',
+                        '/admin/notification-automations',
+                        'Map platform events to notification templates',
+                        $this->badge('Enabled', $this->notificationAutomationEnabledCount()),
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',
@@ -610,6 +617,19 @@ class MissionControlNavigationService
 
 
 
+
+
+    private function notificationAutomationEnabledCount(): int
+    {
+        if (! $this->tableExists('mission_control_notification_automation_rules')) {
+            return 0;
+        }
+
+        return $this->countWhere(
+            'mission_control_notification_automation_rules',
+            'is_enabled = 1'
+        );
+    }
 
     private function notificationDispatchQueuedCount(): int
     {
