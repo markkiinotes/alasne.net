@@ -291,6 +291,13 @@ class MissionControlNavigationService
                         'mission_control.view'
                     ),
                     $this->item(
+                        'Notification Dispatch Center',
+                        '/admin/notification-dispatches',
+                        'Render templates into pending email outbox messages',
+                        $this->badge('Queued', $this->notificationDispatchQueuedCount()),
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',
@@ -602,6 +609,19 @@ class MissionControlNavigationService
 
 
 
+
+
+    private function notificationDispatchQueuedCount(): int
+    {
+        if (! $this->tableExists('mission_control_notification_dispatches')) {
+            return 0;
+        }
+
+        return $this->countWhere(
+            'mission_control_notification_dispatches',
+            "status = 'queued'"
+        );
+    }
 
     private function notificationTemplateCount(): int
     {

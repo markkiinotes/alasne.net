@@ -25,6 +25,7 @@ use App\Controllers\Admin\MissionControlScheduledOperationController;
 use App\Controllers\Admin\MissionControlEmailQueueController;
 use App\Controllers\Admin\MissionControlEmailDeliveryController;
 use App\Controllers\Admin\MissionControlNotificationTemplateController;
+use App\Controllers\Admin\MissionControlNotificationDispatchController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1529,6 +1530,31 @@ $router
     ->post(
         '/admin/notification-templates/{template_id}',
         [MissionControlNotificationTemplateController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-dispatches',
+        [MissionControlNotificationDispatchController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-dispatches/export',
+        [MissionControlNotificationDispatchController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-dispatches/queue',
+        [MissionControlNotificationDispatchController::class, 'queue']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');
