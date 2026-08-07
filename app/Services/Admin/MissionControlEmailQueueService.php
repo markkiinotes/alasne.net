@@ -10,8 +10,10 @@ use RuntimeException;
 class MissionControlEmailQueueService
 {
     public function __construct(
-        private MissionControlEmailQueueRepository $emails
+        private MissionControlEmailQueueRepository $emails,
+        private ?MissionControlSmtpMailService $smtp = null
     ) {
+        $this->smtp ??= new MissionControlSmtpMailService();
     }
 
     /**
@@ -80,6 +82,28 @@ class MissionControlEmailQueueService
                     continue;
                 }
 
+                if ($transport === 'smtp') {
+                    $this->sendWithSmtp($message);
+                    $this->emails->markSent(
+                        $id,
+                        'smtp',
+                        'Email sent using SMTP transport.'
+                    );
+
+                    $sent++;
+                    $processed++;
+
+                    $results[] = [
+                        'id' => $id,
+                        'status' => 'sent',
+                        'transport' => 'smtp',
+                        'recipient' => $message['recipient'] ?? null,
+                        'subject' => $message['subject'] ?? null,
+                    ];
+
+                    continue;
+                }
+
                 throw new RuntimeException(
                     'Unsupported email transport: ' . $transport
                 );
@@ -132,6 +156,20 @@ class MissionControlEmailQueueService
         return $envTransport !== ''
             ? $envTransport
             : 'log';
+    }
+
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function sendWithSmtp(array $message): void
+    {
+        $this->smtp->send(
+            (string) ($message['recipient'] ?? ''),
+            (string) ($message['subject'] ?? ''),
+            (string) ($message['body_text'] ?? ''),
+            (string) ($message['body_html'] ?? '')
+        );
     }
 
     /**

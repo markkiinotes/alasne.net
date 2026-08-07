@@ -277,6 +277,20 @@ class MissionControlNavigationService
                         'mission_control.view'
                     ),
                     $this->item(
+                        'Email Delivery & SMTP',
+                        '/admin/email-delivery',
+                        'Configure and test SMTP delivery for queued email',
+                        $this->badge('SMTP', $this->smtpConfigured() ? 1 : 0),
+                        'mission_control.view'
+                    ),
+                    $this->item(
+                        'Notification Template Center',
+                        '/admin/notification-templates',
+                        'Manage customer, supplier, and admin email templates',
+                        $this->badge('Templates', $this->notificationTemplateCount()),
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',
@@ -586,6 +600,42 @@ class MissionControlNavigationService
 
 
 
+
+
+
+    private function notificationTemplateCount(): int
+    {
+        if (! $this->tableExists('mission_control_notification_templates')) {
+            return 0;
+        }
+
+        return $this->countWhere(
+            'mission_control_notification_templates',
+            'is_enabled = 1'
+        );
+    }
+
+    private function smtpConfigured(): bool
+    {
+        $host = $_ENV['SMTP_HOST']
+            ?? $_ENV['MAIL_HOST']
+            ?? $_SERVER['SMTP_HOST']
+            ?? $_SERVER['MAIL_HOST']
+            ?? getenv('SMTP_HOST')
+            ?: getenv('MAIL_HOST')
+            ?: '';
+
+        $from = $_ENV['MAIL_FROM']
+            ?? $_ENV['MAIL_FROM_ADDRESS']
+            ?? $_SERVER['MAIL_FROM']
+            ?? $_SERVER['MAIL_FROM_ADDRESS']
+            ?? getenv('MAIL_FROM')
+            ?: getenv('MAIL_FROM_ADDRESS')
+            ?: '';
+
+        return trim((string) $host) !== ''
+            && trim((string) $from) !== '';
+    }
 
     private function pendingEmailQueueMessages(): int
     {

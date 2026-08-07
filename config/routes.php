@@ -23,6 +23,8 @@ use App\Controllers\Admin\MissionControlAlertController;
 use App\Controllers\Admin\MissionControlBriefingController;
 use App\Controllers\Admin\MissionControlScheduledOperationController;
 use App\Controllers\Admin\MissionControlEmailQueueController;
+use App\Controllers\Admin\MissionControlEmailDeliveryController;
+use App\Controllers\Admin\MissionControlNotificationTemplateController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1461,6 +1463,72 @@ $router
     ->post(
         '/admin/email-queue/process',
         [MissionControlEmailQueueController::class, 'process']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/email-delivery',
+        [MissionControlEmailDeliveryController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/email-delivery/test',
+        [MissionControlEmailDeliveryController::class, 'test']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-templates',
+        [MissionControlNotificationTemplateController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-templates/export',
+        [MissionControlNotificationTemplateController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-templates',
+        [MissionControlNotificationTemplateController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-templates/{template_id}/preview',
+        [MissionControlNotificationTemplateController::class, 'preview']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-templates/{template_id}',
+        [MissionControlNotificationTemplateController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-templates/{template_id}',
+        [MissionControlNotificationTemplateController::class, 'update']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');
