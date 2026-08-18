@@ -52,6 +52,27 @@ class MissionControlNotificationAutomationService
         if (! empty($rule['dry_run_only'])) {
             $preview = $this->renderer->preview($templateId, $payload, $userId);
 
+            $missingVariables = array_values(
+                array_filter(
+                    array_map(
+                        'strval',
+                        (array) (
+                            $preview[
+                                'missing_variables'
+                            ]
+                            ?? []
+                        )
+                    )
+                )
+            );
+
+            if (! empty($missingVariables)) {
+                throw new RuntimeException(
+                    'Dry-run failed because template variables are missing: '
+                    . implode(', ', $missingVariables)
+                );
+            }
+
             $this->automations->markRun((int) $rule['id']);
             $this->automations->recordEvent(
                 (int) $rule['id'],

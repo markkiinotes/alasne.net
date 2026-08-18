@@ -10,12 +10,13 @@ use App\Repositories\CustomerRepository;
 use App\Repositories\OrderRepository;
 use App\Repositories\PaymentTransactionRepository;
 use App\Repositories\ProductRepository;
-use App\Repositories\ReturnRepository;
 use App\Repositories\StoreRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Mail\EmailOutboxSender;
 use App\Services\Mail\OrderNotificationService;
 use App\Services\Payments\PaymentService;
+use App\Services\Notifications\OrderShippedNotificationPublisher;
+use App\Services\Notifications\TrackingUpdatedNotificationPublisher;
 
 class OrderController extends Controller
 {
@@ -24,7 +25,6 @@ class OrderController extends Controller
         private CustomerRepository $customers,
         private ProductRepository $products,
         private StoreRepository $stores,
-        private ReturnRepository $returns,
         private PaymentTransactionRepository $paymentTransactions,
         private PaymentService $payments,
         private OrderNotificationService $notifications,
@@ -371,8 +371,6 @@ class OrderController extends Controller
             'events' => $this->orders->eventsForOrder($id),
             'shippingAddress' =>
                 $this->shippingAddressForOrder($id),
-            'orderReturns' =>
-                $this->returns->forOrder($id),
             'paymentTransactions' => $transactions,
             'latestSuccessfulCharge' =>
                 $latestCharge,
@@ -683,6 +681,43 @@ class OrderController extends Controller
             ),
         ];
 
+        $wasShipped =
+            trim(
+                (string) (
+                    $order['shipped_at']
+                    ?? ''
+                )
+            ) !== '';
+
+        $willBeShipped =
+            $data['shipped_at'] !== '';
+
+        $oldCarrier = trim(
+            (string) (
+                $order['shipping_carrier']
+                ?? ''
+            )
+        );
+
+        $oldTrackingNumber = trim(
+            (string) (
+                $order['tracking_number']
+                ?? ''
+            )
+        );
+
+        $oldTrackingUrl = trim(
+            (string) (
+                $order['tracking_url']
+                ?? ''
+            )
+        );
+
+        $trackingChanged =
+            $oldCarrier !== $data['shipping_carrier']
+            || $oldTrackingNumber !== $data['tracking_number']
+            || $oldTrackingUrl !== $data['tracking_url'];
+
         if (
             $data['tracking_url'] !== ''
             && ! filter_var(
@@ -706,13 +741,71 @@ class OrderController extends Controller
         );
 
         if ($changed) {
-            $emailId = $this->notifications
-                ->queueFulfillmentUpdate($id);
+            /*
+             * First transition into a shipped state now uses the
+             * Mission Control Notification Event Bridge instead
+             * of the legacy hard-coded fulfillment email.
+             *
+             * Existing fulfillment-only edits continue using the
+             * legacy path until tracking.updated is wired next.
+             */
+            if (! $wasShipped && $willBeShipped) {
+                try {
+                    $publisher =
+                        new OrderShippedNotificationPublisher(
+                            $this->orders
+                        );
 
-            if ($emailId !== null) {
-                $this->emailSender->sendOne(
-                    $emailId
-                );
+                    $publisher->publish($id);
+                } catch (\Throwable $notificationException) {
+                    error_log(
+                        '[Alasne order.shipped notification] '
+                        . $notificationException->getMessage()
+                    );
+                }
+            } elseif (
+                $wasShipped
+                && $willBeShipped
+                && $trackingChanged
+            ) {
+                try {
+                    $trackingPublisher =
+                        new TrackingUpdatedNotificationPublisher(
+                            $this->orders
+                        );
+
+                    $trackingPublisher->publish(
+                        $id,
+                        [
+                            'shipping_carrier' =>
+                                $oldCarrier,
+                            'tracking_number' =>
+                                $oldTrackingNumber,
+                            'tracking_url' =>
+                                $oldTrackingUrl,
+                        ]
+                    );
+                } catch (\Throwable $notificationException) {
+                    error_log(
+                        '[Alasne tracking.updated notification] '
+                        . $notificationException->getMessage()
+                    );
+                }
+            } else {
+                /*
+                 * Non-tracking fulfillment edits retain the
+                 * existing notification path. The Event Bridge
+                 * now owns first shipment and subsequent tracking
+                 * changes.
+                 */
+                $emailId = $this->notifications
+                    ->queueFulfillmentUpdate($id);
+
+                if ($emailId !== null) {
+                    $this->emailSender->sendOne(
+                        $emailId
+                    );
+                }
             }
 
             $_SESSION['orders_success'] =

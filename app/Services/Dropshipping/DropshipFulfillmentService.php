@@ -6,6 +6,7 @@ namespace App\Services\Dropshipping;
 
 use App\Repositories\ProductSupplierRepository;
 use App\Services\Suppliers\SupplierSubmissionService;
+use App\Services\Notifications\PurchaseOrderCreatedNotificationPublisher;
 use PDO;
 use RuntimeException;
 
@@ -22,6 +23,12 @@ class DropshipFulfillmentService
         int $orderId,
         bool $retryUnassigned = false
     ): array {
+        /*
+         * Only purchase orders created during this routing run
+         * should emit purchase_order.created after commit.
+         */
+        $newPurchaseOrderIds = [];
+
         $this->db->beginTransaction();
 
         try {
@@ -86,11 +93,19 @@ class DropshipFulfillmentService
             }
 
             foreach ($groups as $supplierId => $group) {
+                $purchaseOrderCreated = false;
+
                 $purchaseOrderId = $this->findOrCreatePurchaseOrder(
                     $order,
                     (int) $supplierId,
-                    (array) $group['candidate']
+                    (array) $group['candidate'],
+                    $purchaseOrderCreated
                 );
+
+                if ($purchaseOrderCreated) {
+                    $newPurchaseOrderIds[] =
+                        $purchaseOrderId;
+                }
 
                 foreach ($group['items'] as $item) {
                     $this->addPurchaseOrderItem(
@@ -151,6 +166,39 @@ class DropshipFulfillmentService
             );
 
             $this->db->commit();
+
+            /*
+             * At this point each new purchase order, its items,
+             * totals, supplier-submission preparation state, and
+             * customer-order routing summary are durable.
+             *
+             * Event Bridge failures are isolated from fulfillment.
+             */
+            foreach (
+                array_values(
+                    array_unique(
+                        $newPurchaseOrderIds
+                    )
+                )
+                as $purchaseOrderId
+            ) {
+                try {
+                    $publisher =
+                        new PurchaseOrderCreatedNotificationPublisher(
+                            $this->db
+                        );
+
+                    $publisher->publish(
+                        (int) $purchaseOrderId
+                    );
+                } catch (\Throwable $notificationException) {
+                    error_log(
+                        '[Alasne purchase_order.created notification] '
+                        . $notificationException->getMessage()
+                    );
+                }
+            }
+
             return $summary;
         } catch (\Throwable $exception) {
             if ($this->db->inTransaction()) {
@@ -270,8 +318,11 @@ class DropshipFulfillmentService
     private function findOrCreatePurchaseOrder(
         array $order,
         int $supplierId,
-        array $candidate
+        array $candidate,
+        bool &$created
     ): int {
+        $created = false;
+
         $find = $this->db->prepare("
             SELECT id
             FROM purchase_orders
@@ -345,6 +396,7 @@ class DropshipFulfillmentService
             'ship_to_country' => $order['ship_to_country'] ?? null,
         ]);
         $id = (int) $this->db->lastInsertId();
+        $created = true;
 
         $this->purchaseOrderEvent(
             $id,

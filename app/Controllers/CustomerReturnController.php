@@ -11,6 +11,8 @@ use App\Repositories\ReturnRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Mail\EmailOutboxSender;
 use App\Services\Returns\ReturnNotificationService;
+use App\Services\Notifications\ReturnRequestedNotificationPublisher;
+use App\Services\Notifications\RmaApprovedNotificationPublisher;
 use App\Services\Returns\ReturnService;
 
 class CustomerReturnController extends Controller
@@ -426,32 +428,76 @@ class CustomerReturnController extends Controller
 
             $notificationWarning = null;
 
+            /*
+             * The return transaction has already committed inside
+             * ReturnService::create() before control reaches here.
+             *
+             * Every successful customer submission now emits the
+             * real return.requested Event Bridge event.
+             */
+            try {
+                $publisher =
+                    new ReturnRequestedNotificationPublisher(
+                        $this->returns
+                    );
+
+                $publisher->publish(
+                    $returnId
+                );
+            } catch (\Throwable $notificationException) {
+                error_log(
+                    '[Alasne return.requested notification] '
+                    . $notificationException->getMessage()
+                );
+
+                $notificationWarning =
+                    'The request was created, but its confirmation notification could not be queued immediately.';
+            }
+
+            /*
+             * If the store policy automatically approved the return,
+             * ReturnService::create() has already committed both the
+             * approved status and RMA authorization before control
+             * reaches this point.
+             *
+             * Publish rma.approved through the Event Bridge instead
+             * of the legacy approved-return email.
+             */
             try {
                 $createdReturn =
                     $this->returns->find(
                         $returnId
                     );
 
-                $notificationEvent =
+                if (
                     ($createdReturn['status'] ?? '')
                     === 'approved'
-                        ? 'approved'
-                        : 'requested';
+                    && trim(
+                        (string) (
+                            $createdReturn['rma_number']
+                            ?? ''
+                        )
+                    ) !== ''
+                ) {
+                    $rmaPublisher =
+                        new RmaApprovedNotificationPublisher(
+                            $this->returns
+                        );
 
-                $outboxId =
-                    $this->notifications->queueForEvent(
+                    $rmaPublisher->publish(
                         $returnId,
-                        $notificationEvent
-                    );
-
-                if ($outboxId !== null) {
-                    $this->emailSender->sendOne(
-                        $outboxId
+                        'customer_policy_auto_approval'
                     );
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $approvalNotificationException) {
+                error_log(
+                    '[Alasne rma.approved notification] '
+                    . $approvalNotificationException->getMessage()
+                );
+
                 $notificationWarning =
-                    'The request was created, but the confirmation email could not be sent immediately.';
+                    $notificationWarning
+                    ?? 'The request was created and approved, but its return authorization notification could not be queued immediately.';
             }
 
             $successToken = bin2hex(

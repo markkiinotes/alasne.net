@@ -27,6 +27,7 @@ use App\Controllers\Admin\MissionControlEmailDeliveryController;
 use App\Controllers\Admin\MissionControlNotificationTemplateController;
 use App\Controllers\Admin\MissionControlNotificationDispatchController;
 use App\Controllers\Admin\MissionControlNotificationAutomationController;
+use App\Controllers\Admin\MissionControlNotificationEventBridgeController;
 use App\Controllers\Admin\ProductSourcingController;
 use App\Controllers\Admin\ProductSupplierController;
 use App\Controllers\Admin\PurchaseOrderController;
@@ -1589,6 +1590,31 @@ $router
     ->post(
         '/admin/notification-automations/{rule_id}',
         [MissionControlNotificationAutomationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-event-bridge',
+        [MissionControlNotificationEventBridgeController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-event-bridge/export',
+        [MissionControlNotificationEventBridgeController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-event-bridge/simulate',
+        [MissionControlNotificationEventBridgeController::class, 'simulate']
     )
     ->middleware('auth')
     ->middleware('permission:mission_control.view');

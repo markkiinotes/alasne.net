@@ -305,6 +305,13 @@ class MissionControlNavigationService
                         'mission_control.view'
                     ),
                     $this->item(
+                        'Notification Event Bridge',
+                        '/admin/notification-event-bridge',
+                        'Simulate and audit platform notification events',
+                        $this->badge('Runs', $this->notificationEventBridgeRunCount()),
+                        'mission_control.view'
+                    ),
+                    $this->item(
                         'Reports & KPI Center',
                         '/admin/reports',
                         'Sales, margin, supplier, operations, and readiness KPIs',
@@ -618,6 +625,18 @@ class MissionControlNavigationService
 
 
 
+
+
+    private function notificationEventBridgeRunCount(): int
+    {
+        if (! $this->tableExists('mission_control_notification_event_bridge_runs')) {
+            return 0;
+        }
+
+        return $this->countTable(
+            'mission_control_notification_event_bridge_runs'
+        );
+    }
 
     private function notificationAutomationEnabledCount(): int
     {

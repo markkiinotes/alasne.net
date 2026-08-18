@@ -8,6 +8,7 @@ use App\Repositories\ReturnExchangeRepository;
 use App\Repositories\ReturnRepository;
 use App\Repositories\StoreCreditRepository;
 use App\Services\Payments\PaymentService;
+use App\Services\Notifications\StoreCreditIssuedNotificationPublisher;
 use PDO;
 use RuntimeException;
 
@@ -494,6 +495,44 @@ class ReturnResolutionService
             );
 
             $this->db->commit();
+
+            /*
+             * Store credit is now durable. Publish the customer
+             * account notice only after the return-resolution
+             * transaction commits.
+             *
+             * This runs before any separate external refund
+             * attempt. A later card-refund failure must not hide
+             * a store credit that was already successfully issued.
+             */
+            if (
+                is_array($credit)
+                && isset(
+                    $credit['transaction']['id']
+                )
+                && (int) $credit[
+                    'transaction'
+                ]['id'] > 0
+            ) {
+                try {
+                    $publisher =
+                        new StoreCreditIssuedNotificationPublisher(
+                            $this->db
+                        );
+
+                    $publisher->publish(
+                        $returnId,
+                        (int) $credit[
+                            'transaction'
+                        ]['id']
+                    );
+                } catch (\Throwable $notificationException) {
+                    error_log(
+                        '[Alasne store_credit.issued notification] '
+                        . $notificationException->getMessage()
+                    );
+                }
+            }
         } catch (\Throwable $exception) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();

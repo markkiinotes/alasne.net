@@ -6,6 +6,7 @@ namespace App\Services\Suppliers;
 
 use App\Repositories\SupplierIntegrationRepository;
 use App\Repositories\SupplierSubmissionRepository;
+use App\Services\Notifications\SupplierSubmissionFailedNotificationPublisher;
 use PDO;
 use RuntimeException;
 
@@ -254,9 +255,42 @@ class SupplierSubmissionService
                     : 0,
         ]);
 
-        return $this->submissions->find(
-            $submissionId
-        ) ?? [];
+        /*
+         * Both the supplier submission record and its purchase
+         * order mirror are now durable. Only after those writes
+         * succeed do we publish the operational failure alert.
+         *
+         * The refreshed row contains the incremented attempt_count,
+         * which becomes part of the Event Bridge idempotency key.
+         */
+        $updatedSubmission =
+            $this->submissions->find(
+                $submissionId
+            ) ?? [];
+
+        if ($status === 'failed') {
+            try {
+                $publisher =
+                    new SupplierSubmissionFailedNotificationPublisher(
+                        $this->db
+                    );
+
+                $publisher->publish(
+                    $submissionId,
+                    (string) (
+                        $submission['status']
+                        ?? ''
+                    )
+                );
+            } catch (\Throwable $notificationException) {
+                error_log(
+                    '[Alasne supplier_submission.failed notification] '
+                    . $notificationException->getMessage()
+                );
+            }
+        }
+
+        return $updatedSubmission;
     }
 
     /**

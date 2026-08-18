@@ -17,6 +17,7 @@ use App\Services\Auth\CsrfService;
 use App\Services\Mail\EmailOutboxSender;
 use App\Services\Returns\ReturnCarrierService;
 use App\Services\Returns\ReturnNotificationService;
+use App\Services\Notifications\RmaApprovedNotificationPublisher;
 use App\Services\Returns\ReturnResolutionService;
 use App\Services\Returns\ReturnService;
 use App\Services\Returns\ReturnShippingNotificationService;
@@ -599,10 +600,32 @@ class ReturnController extends Controller
             $_SESSION['returns_success'] =
                 'Return approved successfully.';
 
-            $this->queueNotification(
-                $returnId,
-                'approved'
-            );
+            /*
+             * ReturnService::approve() commits the approved status
+             * and RMA authorization before returning. Publish the
+             * customer instructions only after that successful
+             * commit. Notification failures cannot undo approval.
+             */
+            try {
+                $rmaPublisher =
+                    new RmaApprovedNotificationPublisher(
+                        $this->returns
+                    );
+
+                $rmaPublisher->publish(
+                    $returnId,
+                    'mission_control_returns'
+                );
+            } catch (\Throwable $notificationException) {
+                error_log(
+                    '[Alasne rma.approved notification] '
+                    . $notificationException->getMessage()
+                );
+
+                $_SESSION['returns_error'] =
+                    'The return was approved, but its customer authorization notification could not be queued: '
+                    . $notificationException->getMessage();
+            }
         } catch (\Throwable $exception) {
             $_SESSION['returns_error'] =
                 $exception->getMessage()
