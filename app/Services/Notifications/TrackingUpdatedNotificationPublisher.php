@@ -256,6 +256,16 @@ class TrackingUpdatedNotificationPublisher
             'tracking_url' =>
                 $trackingUrl,
 
+            /*
+             * The seeded tracking_updated template requires
+             * {{tracking_status}}. Alasne does not yet consume a
+             * live carrier-status feed, so use an accurate
+             * system-owned event label rather than inventing an
+             * external carrier state.
+             */
+            'tracking_status' =>
+                'Tracking updated',
+
             'shipped_at' =>
                 $shippedAt,
 
