@@ -47,21 +47,17 @@ class MissionControlNotificationDispatchService
         $rendered = $this->renderer->preview($templateId, $payload, $userId);
 
         $missingVariables = array_values(
-            array_filter(
-                array_map(
-                    'strval',
-                    (array) (
-                        $rendered['missing_variables']
-                        ?? []
-                    )
-                )
+            array_map(
+                'strval',
+                (array) ($rendered['missing_variables'] ?? [])
             )
         );
 
         if (! empty($missingVariables)) {
             throw new RuntimeException(
-                'Notification cannot be queued because template variables are missing: '
+                'Notification payload is missing required template variable(s): '
                 . implode(', ', $missingVariables)
+                . '.'
             );
         }
 

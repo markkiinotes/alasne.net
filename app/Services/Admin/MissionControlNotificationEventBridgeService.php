@@ -6,6 +6,7 @@ namespace App\Services\Admin;
 
 use App\Repositories\MissionControlNotificationEventBridgeRepository;
 use App\Repositories\MissionControlNotificationTemplateRepository;
+use PDOException;
 use RuntimeException;
 
 class MissionControlNotificationEventBridgeService
@@ -46,38 +47,60 @@ class MissionControlNotificationEventBridgeService
         $providedRecipient = trim((string) ($options['recipient'] ?? ''));
         $idempotencyKey = $this->idempotencyKey($eventKey, $payload, $options);
 
-        if ($idempotencyKey !== null && $this->bridge->runExistsByKey('run:' . $idempotencyKey)) {
-            $runId = $this->bridge->markDuplicateRun(
+        $runKey = $idempotencyKey !== null
+            ? 'run:' . $idempotencyKey
+            : null;
+
+        if ($runKey !== null) {
+            $existingRunId =
+                $this->bridge->runIdByKey(
+                    $runKey
+                );
+
+            if ($existingRunId !== null) {
+                return $this->duplicateResult(
+                    $existingRunId,
+                    $eventKey
+                );
+            }
+        }
+
+        try {
+            $runId = $this->bridge->createRun(
                 $eventKey,
                 $eventSource,
-                'run:' . $idempotencyKey,
+                $runKey,
                 $payload,
                 $userId
             );
+        } catch (PDOException $exception) {
+            /*
+             * The database unique key is the final idempotency
+             * authority. If two identical events race between the
+             * pre-check and INSERT, the loser cleanly returns
+             * duplicate instead of surfacing a database error.
+             */
+            if (
+                $runKey !== null
+                && $this->isDuplicateKeyException(
+                    $exception
+                )
+            ) {
+                $existingRunId =
+                    $this->bridge->runIdByKey(
+                        $runKey
+                    );
 
-            return [
-                'run_id' => $runId,
-                'event_key' => $eventKey,
-                'status' => 'duplicate',
-                'message' => 'Duplicate event ignored by idempotency key.',
-                'stats' => [
-                    'matched_rules' => 0,
-                    'queued_dispatches' => 0,
-                    'dry_run_events' => 0,
-                    'skipped_rules' => 1,
-                    'failed_rules' => 0,
-                ],
-                'items' => [],
-            ];
+                if ($existingRunId !== null) {
+                    return $this->duplicateResult(
+                        $existingRunId,
+                        $eventKey
+                    );
+                }
+            }
+
+            throw $exception;
         }
-
-        $runId = $this->bridge->createRun(
-            $eventKey,
-            $eventSource,
-            $idempotencyKey !== null ? 'run:' . $idempotencyKey : null,
-            $payload,
-            $userId
-        );
 
         $rules = $includeDisabled
             ? $this->bridge->allRulesForEvent($eventKey)
@@ -188,23 +211,22 @@ class MissionControlNotificationEventBridgeService
                     );
 
                     $missingVariables = array_values(
-                        array_filter(
-                            array_map(
-                                'strval',
-                                (array) (
-                                    $preview[
-                                        'missing_variables'
-                                    ]
-                                    ?? []
-                                )
+                        array_map(
+                            'strval',
+                            (array) (
+                                $preview[
+                                    'missing_variables'
+                                ]
+                                ?? []
                             )
                         )
                     );
 
                     if (! empty($missingVariables)) {
                         throw new RuntimeException(
-                            'Dry-run failed because template variables are missing: '
+                            'Notification payload is missing required template variable(s): '
                             . implode(', ', $missingVariables)
+                            . '.'
                         );
                     }
 
@@ -342,45 +364,83 @@ class MissionControlNotificationEventBridgeService
         array $payload,
         string $providedRecipient
     ): string {
+        /*
+         * Explicit recipient is reserved for the manual simulator
+         * and other deliberate service callers.
+         */
         if ($providedRecipient !== '') {
-            return $this->validEmail($providedRecipient);
+            return $this->validEmail(
+                $providedRecipient
+            );
         }
 
-        $source = (string) ($rule['recipient_source'] ?? '');
+        $source = (string) (
+            $rule['recipient_source']
+            ?? ''
+        );
 
         /*
-         * Internal/admin alerts must prefer the recipient configured
-         * on the automation rule. Event payload data should not be
-         * able to silently redirect an operations notification.
+         * Admin alerts are configuration-owned. Event payloads must
+         * not be able to redirect an operations alert to an address
+         * supplied by the event itself.
          */
-        if (
-            $source === 'admin_default_recipient'
-            && ! empty($rule['default_recipient'])
-        ) {
+        if ($source === 'admin_default_recipient') {
+            if (! empty($rule['default_recipient'])) {
+                return $this->validEmail(
+                    (string) $rule['default_recipient']
+                );
+            }
+
+            throw new RuntimeException(
+                'Admin notification rule '
+                . (string) (
+                    $rule['rule_key']
+                    ?? ''
+                )
+                . ' requires a configured Default Recipient.'
+            );
+        }
+
+        $candidates = match ($source) {
+            'customer_email' => [
+                'customer_email',
+                'email',
+                'to_email',
+            ],
+            'supplier_email' => [
+                'supplier_email',
+                'email',
+                'to_email',
+            ],
+            default => [
+                'recipient',
+                'to_email',
+                'email',
+                'customer_email',
+                'supplier_email',
+            ],
+        };
+
+        foreach ($candidates as $key) {
+            if (! empty($payload[$key])) {
+                return $this->validEmail(
+                    (string) $payload[$key]
+                );
+            }
+        }
+
+        if (! empty($rule['default_recipient'])) {
             return $this->validEmail(
                 (string) $rule['default_recipient']
             );
         }
 
-        $candidates = match ($source) {
-            'customer_email' => ['customer_email', 'email', 'to_email'],
-            'supplier_email' => ['supplier_email', 'email', 'to_email'],
-            'admin_default_recipient' => ['admin_email', 'recipient', 'to_email'],
-            default => ['recipient', 'to_email', 'email', 'customer_email', 'supplier_email', 'admin_email'],
-        };
-
-        foreach ($candidates as $key) {
-            if (! empty($payload[$key])) {
-                return $this->validEmail((string) $payload[$key]);
-            }
-        }
-
-        if (! empty($rule['default_recipient'])) {
-            return $this->validEmail((string) $rule['default_recipient']);
-        }
-
         throw new RuntimeException(
-            'Unable to resolve recipient for rule ' . (string) ($rule['rule_key'] ?? '')
+            'Unable to resolve recipient for rule '
+            . (string) (
+                $rule['rule_key']
+                ?? ''
+            )
         );
     }
 
@@ -424,6 +484,43 @@ class MissionControlNotificationEventBridgeService
             . ', failed '
             . (int) $stats['failed_rules']
             . '.';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function duplicateResult(
+        int $runId,
+        string $eventKey
+    ): array {
+        return [
+            'run_id' => $runId,
+            'event_key' => $eventKey,
+            'status' => 'duplicate',
+            'message' =>
+                'Duplicate event ignored by idempotency key.',
+            'stats' => [
+                'matched_rules' => 0,
+                'queued_dispatches' => 0,
+                'dry_run_events' => 0,
+                'skipped_rules' => 1,
+                'failed_rules' => 0,
+            ],
+            'items' => [],
+        ];
+    }
+
+    private function isDuplicateKeyException(
+        PDOException $exception
+    ): bool {
+        if ($exception->getCode() === '23000') {
+            return true;
+        }
+
+        $errorInfo = $exception->errorInfo;
+
+        return is_array($errorInfo)
+            && (int) ($errorInfo[1] ?? 0) === 1062;
     }
 
     /**

@@ -91,6 +91,155 @@ class MissionControlEmailQueueRepository
         return $stmt->fetchAll();
     }
 
+    /**
+     * Atomically claim one outbox row so overlapping Mission Control
+     * workers do not send the same pending message concurrently.
+     *
+     * Legacy outbox schemas without a status column remain supported,
+     * but cannot provide an atomic claim.
+     */
+    public function claimForProcessing(
+        int $id
+    ): bool {
+        if (! $this->tableExists('email_outbox')) {
+            return false;
+        }
+
+        $statusColumn = $this->firstExistingColumn(
+            'email_outbox',
+            [
+                'status',
+                'delivery_status',
+                'send_status',
+            ]
+        );
+
+        if (! $statusColumn) {
+            return true;
+        }
+
+        $sets = [
+            "`{$statusColumn}` = 'processing'",
+        ];
+
+        $updatedColumn = $this->firstExistingColumn(
+            'email_outbox',
+            [
+                'updated_at',
+                'processed_at',
+            ]
+        );
+
+        if ($updatedColumn) {
+            $sets[] = "`{$updatedColumn}` = NOW()";
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE email_outbox
+            SET " . implode(', ', $sets) . "
+            WHERE id = :id
+            AND (
+                `{$statusColumn}` IN (
+                    'pending',
+                    'queued',
+                    'ready',
+                    'failed'
+                )
+                OR `{$statusColumn}` IS NULL
+                OR `{$statusColumn}` = ''
+            )
+        ");
+
+        $stmt->execute([
+            'id' => $id,
+        ]);
+
+        return $stmt->rowCount() === 1;
+    }
+
+    /**
+     * Recover rows left in processing if a worker terminated before
+     * it could mark the message sent/logged/failed.
+     */
+    public function releaseStaleProcessing(
+        int $timeoutMinutes = 30
+    ): int {
+        if (! $this->tableExists('email_outbox')) {
+            return 0;
+        }
+
+        $statusColumn = $this->firstExistingColumn(
+            'email_outbox',
+            [
+                'status',
+                'delivery_status',
+                'send_status',
+            ]
+        );
+
+        $updatedColumn = $this->firstExistingColumn(
+            'email_outbox',
+            [
+                'updated_at',
+                'processed_at',
+            ]
+        );
+
+        if (! $statusColumn || ! $updatedColumn) {
+            return 0;
+        }
+
+        $timeoutMinutes = max(
+            5,
+            min(
+                1440,
+                $timeoutMinutes
+            )
+        );
+
+        $cutoff = date(
+            'Y-m-d H:i:s',
+            time() - ($timeoutMinutes * 60)
+        );
+
+        $sets = [
+            "`{$statusColumn}` = 'failed'",
+            "`{$updatedColumn}` = NOW()",
+        ];
+
+        $errorColumn = $this->firstExistingColumn(
+            'email_outbox',
+            [
+                'last_error',
+                'error_message',
+                'failure_reason',
+            ]
+        );
+
+        $params = [
+            'cutoff' => $cutoff,
+        ];
+
+        if ($errorColumn) {
+            $sets[] =
+                "`{$errorColumn}` = :lease_error";
+
+            $params['lease_error'] =
+                'Processing lease expired before completion; message is eligible for retry.';
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE email_outbox
+            SET " . implode(', ', $sets) . "
+            WHERE `{$statusColumn}` = 'processing'
+            AND `{$updatedColumn}` < :cutoff
+        ");
+
+        $stmt->execute($params);
+
+        return $stmt->rowCount();
+    }
+
     public function findOutboxMessage(int $id): ?array
     {
         if (! $this->tableExists('email_outbox')) {

@@ -1,45 +1,120 @@
 # Notification Event Lifecycle
 
-Last audited: **2026-08-17**
-
-| Event | Source | Audience | Idempotency |
-|---|---|---|---|
-| `order.created` | `storefront_checkout` | Customer | `order.created:order_id:<id>` |
-| `payment.captured` | `storefront_checkout` | Customer | `payment.captured:payment_transaction_id:<id>` |
-| `order.shipped` | `admin_fulfillment` | Customer | `order.shipped:order_id:<id>` |
-| `tracking.updated` | `admin_fulfillment` | Customer | Order ID + tracking-state SHA-256 fingerprint |
-| `return.requested` | `customer_self_service` | Customer | `return.requested:return_id:<id>` |
-| `rma.approved` | `mission_control_returns` / `customer_policy_auto_approval` | Customer | `rma.approved:return_id:<id>` |
-| `store_credit.issued` | `return_resolution` | Customer | `store_credit.issued:transaction_id:<id>` |
-| `purchase_order.created` | `dropship_fulfillment` | Supplier | `purchase_order.created:purchase_order_id:<id>` |
-| `supplier_submission.failed` | `supplier_submission_workflow` | Admin | Submission ID + attempt count |
-
-## Flow
+## Customer/order lifecycle
 
 ```text
-Paid checkout
-  ├─ order.created
-  ├─ payment.captured
-  └─ supplier routing → purchase_order.created
-        ↓
-Fulfillment
-  ├─ order.shipped
-  └─ tracking.updated
+Order created
+    → order.created
 
-Customer return
-  ├─ return.requested
-  ├─ rma.approved
-  └─ store_credit.issued (when applicable)
+Payment captured
+    → payment.captured
 
-Supplier submission failure
-  └─ supplier_submission.failed → internal admin
+First shipment
+    → order.shipped
+
+Later carrier/tracking change
+    → tracking.updated
+
+Return requested
+    → return.requested
+
+RMA approved
+    → rma.approved
+
+Store credit issued
+    → store_credit.issued
 ```
 
-## Rules
+## Supplier lifecycle
 
-1. Publish only after relevant commerce state is durable.
-2. Notification failures must not roll back commerce state.
-3. Idempotency must identify the business event/attempt.
-4. Recipient source must match audience.
-5. Event payloads exclude payment credentials, API secrets, and raw supplier request/response payloads.
-6. Template-owned HTML may remain raw; payload values inserted into HTML are escaped.
+```text
+Paid order routed to supplier
+    ↓
+Purchase order + lines persisted
+    ↓
+Routing transaction COMMIT
+    ↓
+purchase_order.created
+
+Supplier submission attempted / status updated
+    ↓
+submission row saved
+    ↓
+purchase order submission mirror saved
+    ↓
+if status = failed
+    ↓
+supplier_submission.failed
+```
+
+## Idempotency strategy
+
+The database has a unique Event Bridge run key. Publishers also provide
+business-specific keys.
+
+Current publisher strategy:
+
+```text
+order.created
+  order.created:order_id:<id>
+
+payment.captured
+  payment.captured:payment_transaction_id:<id>
+
+order.shipped
+  order.shipped:order_id:<id>
+
+tracking.updated
+  tracking.updated:order_id:<id>:<tracking-state-fingerprint>
+
+return.requested
+  return.requested:return_id:<id>
+
+rma.approved
+  rma.approved:return_id:<id>
+
+store_credit.issued
+  store_credit.issued:transaction_id:<id>
+
+purchase_order.created
+  purchase_order.created:purchase_order_id:<id>
+
+supplier_submission.failed
+  supplier_submission.failed:submission_id:<id>:attempt:<attempt_count>
+```
+
+This audit also hardens the race where two identical events arrive at nearly
+the same time. The database unique key remains the final authority.
+
+## Recipient ownership
+
+```text
+customer_email
+    → resolved from event payload
+
+supplier_email
+    → resolved from event payload
+
+admin_default_recipient
+    → resolved from the automation rule's configured Default Recipient
+```
+
+An admin event payload does not get to redirect an operations alert to a
+payload-provided address. The manual Event Bridge simulator may still supply
+an explicit recipient deliberately.
+
+## Rendering ownership
+
+```text
+Template HTML
+    → trusted/template-owned markup
+
+Payload values inserted into HTML
+    → HTML escaped
+
+Plain-text body
+    → plain text
+
+Subject
+    → plain text + CR/LF collapsed
+```

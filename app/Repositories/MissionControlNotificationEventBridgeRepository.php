@@ -345,6 +345,27 @@ class MissionControlNotificationEventBridgeRepository
     }
 
 
+    public function runIdByKey(
+        string $idempotencyKey
+    ): ?int {
+        $stmt = $this->db->prepare("
+            SELECT id
+            FROM mission_control_notification_event_bridge_runs
+            WHERE idempotency_key = :idempotency_key
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $value = $stmt->fetchColumn();
+
+        return $value !== false
+            ? (int) $value
+            : null;
+    }
+
     public function runExistsByKey(string $idempotencyKey): bool
     {
         $stmt = $this->db->prepare("

@@ -31,20 +31,37 @@ class MissionControlNotificationTemplateService
         $payload ??= $this->samplePayload($template);
 
         $rendered = [
-            'subject' => $this->renderSubject(
+            /*
+             * Subject/header context: render values as text and strip
+             * CR/LF so payload values cannot create additional headers.
+             */
+            'subject' => $this->renderHeader(
                 (string) $template['subject_template'],
                 $payload
             ),
+
+            /*
+             * Text context stays plain text.
+             */
             'body_text' => $this->render(
                 (string) ($template['body_text_template'] ?? ''),
                 $payload
             ),
+
+            /*
+             * Template-owned HTML remains raw, but every payload value
+             * inserted into the template is HTML escaped.
+             */
             'body_html' => $this->renderHtml(
                 (string) ($template['body_html_template'] ?? ''),
                 $payload
             ),
+
             'payload' => $payload,
-            'missing_variables' => $this->missingVariables($template, $payload),
+            'missing_variables' => $this->missingVariables(
+                $template,
+                $payload
+            ),
             'available_variables' => $this->variables($template),
         ];
 
@@ -74,46 +91,44 @@ class MissionControlNotificationTemplateService
     }
 
     /**
+     * Return the union of declared variables and variables actually
+     * present in template content.
+     *
+     * This prevents a stale variables_json definition from hiding a
+     * newly-added {{placeholder}} from production validation.
+     *
      * @return list<string>
      */
     public function variables(array $template): array
     {
-        $content =
-            (string) ($template['subject_template'] ?? '')
-            . "\n"
-            . (string) ($template['body_text_template'] ?? '')
-            . "\n"
-            . (string) ($template['body_html_template'] ?? '');
-
-        $variables = $this->extractVariables($content);
+        $declared = [];
 
         $json = (string) ($template['variables_json'] ?? '');
 
         if (trim($json) !== '') {
-            $declared = json_decode($json, true);
+            $variables = json_decode($json, true);
 
-            if (is_array($declared)) {
-                $variables = array_merge(
-                    $variables,
-                    array_map('strval', $declared)
+            if (is_array($variables)) {
+                $declared = array_map(
+                    'strval',
+                    $variables
                 );
             }
         }
 
-        /*
-         * Production safety: the real template content is always
-         * authoritative. variables_json may become stale after a
-         * manual template edit, so merge both sources rather than
-         * trusting metadata alone.
-         */
+        $extracted = $this->extractVariables(
+            (string) ($template['subject_template'] ?? '')
+            . "\n"
+            . (string) ($template['body_text_template'] ?? '')
+            . "\n"
+            . (string) ($template['body_html_template'] ?? '')
+        );
+
         return array_values(
             array_unique(
-                array_filter(
-                    array_map(
-                        static fn (string $value): string => trim($value),
-                        $variables
-                    ),
-                    static fn (string $value): bool => $value !== ''
+                array_merge(
+                    $declared,
+                    $extracted
                 )
             )
         );
@@ -122,8 +137,10 @@ class MissionControlNotificationTemplateService
     /**
      * @return list<string>
      */
-    private function missingVariables(array $template, array $payload): array
-    {
+    public function missingVariables(
+        array $template,
+        array $payload
+    ): array {
         $missing = [];
 
         foreach ($this->variables($template) as $variable) {
@@ -140,14 +157,21 @@ class MissionControlNotificationTemplateService
      */
     private function extractVariables(string $content): array
     {
-        preg_match_all('/{{\s*([a-zA-Z0-9_]+)\s*}}/', $content, $matches);
+        preg_match_all(
+            '/{{\s*([a-zA-Z0-9_]+)\s*}}/',
+            $content,
+            $matches
+        );
 
-        return array_values(array_unique($matches[1] ?? []));
+        return array_values(
+            array_unique(
+                $matches[1] ?? []
+            )
+        );
     }
 
     /**
-     * Plain-text rendering used for message bodies and any callers
-     * that historically used render().
+     * Plain-text template rendering.
      *
      * @param array<string, mixed> $payload
      */
@@ -155,7 +179,7 @@ class MissionControlNotificationTemplateService
         string $template,
         array $payload
     ): string {
-        return $this->replaceVariables(
+        return $this->renderWithContext(
             $template,
             $payload,
             false
@@ -163,8 +187,34 @@ class MissionControlNotificationTemplateService
     }
 
     /**
-     * HTML rendering keeps template-owned markup intact while
-     * escaping every payload value before interpolation.
+     * Email-header rendering. Newlines are collapsed after template
+     * substitution to prevent subject/header injection.
+     *
+     * @param array<string, mixed> $payload
+     */
+    public function renderHeader(
+        string $template,
+        array $payload
+    ): string {
+        $value = $this->render(
+            $template,
+            $payload
+        );
+
+        $value = preg_replace(
+            '/[\r\n]+/',
+            ' ',
+            $value
+        ) ?? $value;
+
+        return trim($value);
+    }
+
+    /**
+     * HTML template rendering.
+     *
+     * The template HTML itself is trusted/template-owned. Only
+     * substituted payload values are escaped.
      *
      * @param array<string, mixed> $payload
      */
@@ -172,7 +222,7 @@ class MissionControlNotificationTemplateService
         string $template,
         array $payload
     ): string {
-        return $this->replaceVariables(
+        return $this->renderWithContext(
             $template,
             $payload,
             true
@@ -180,73 +230,28 @@ class MissionControlNotificationTemplateService
     }
 
     /**
-     * Subject rendering is plain text and must never contain raw
-     * CR/LF or other header control characters.
-     *
      * @param array<string, mixed> $payload
      */
-    public function renderSubject(
-        string $template,
-        array $payload
-    ): string {
-        $subject = $this->replaceVariables(
-            $template,
-            $payload,
-            false
-        );
-
-        $subject = preg_replace(
-            '/[\r\n]+/',
-            ' ',
-            $subject
-        ) ?? $subject;
-
-        $subject = preg_replace(
-            '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+/',
-            '',
-            $subject
-        ) ?? $subject;
-
-        return trim(
-            preg_replace(
-                '/[ \t]+/',
-                ' ',
-                $subject
-            ) ?? $subject
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $payload
-     */
-    private function replaceVariables(
+    private function renderWithContext(
         string $template,
         array $payload,
         bool $escapeHtml
     ): string {
         return preg_replace_callback(
             '/{{\s*([a-zA-Z0-9_]+)\s*}}/',
-            static function (
-                array $matches
-            ) use (
+            function (array $matches) use (
                 $payload,
                 $escapeHtml
             ): string {
                 $key = $matches[1];
 
-                if (! array_key_exists(
-                    $key,
-                    $payload
-                )) {
+                if (! array_key_exists($key, $payload)) {
                     return $matches[0];
                 }
 
                 $value = $payload[$key];
 
-                if (
-                    is_array($value)
-                    || is_object($value)
-                ) {
+                if (is_array($value) || is_object($value)) {
                     $value = json_encode(
                         $value,
                         JSON_UNESCAPED_SLASHES
@@ -254,10 +259,6 @@ class MissionControlNotificationTemplateService
                     ) ?: '';
                 } elseif ($value === null) {
                     $value = '';
-                } elseif (is_bool($value)) {
-                    $value = $value
-                        ? '1'
-                        : '0';
                 } else {
                     $value = (string) $value;
                 }
@@ -268,8 +269,7 @@ class MissionControlNotificationTemplateService
 
                 return htmlspecialchars(
                     $value,
-                    ENT_QUOTES
-                    | ENT_SUBSTITUTE,
+                    ENT_QUOTES | ENT_SUBSTITUTE,
                     'UTF-8'
                 );
             },
