@@ -120,6 +120,133 @@
 			
         </section>
 
+        <?php
+        /*
+         * Tracking data has evolved over time. Prefer the immutable
+         * shipping-address snapshot when the controller provides it,
+         * then fall back to current customer aliases and legacy keys.
+         * Every lookup is guarded so older orders cannot trigger
+         * undefined-array-key warnings.
+         */
+        $shippingSnapshot =
+            isset($shippingAddress) && is_array($shippingAddress)
+                ? $shippingAddress
+                : [];
+
+        $shippingName = trim((string) (
+            $shippingSnapshot['full_name']
+            ?? $order['shipping_full_name']
+            ?? $order['full_name']
+            ?? $order['customer_name']
+            ?? ''
+        ));
+
+        if ($shippingName === '') {
+            $shippingName = trim(
+                (string) (
+                    $order['customer_first_name']
+                    ?? $order['first_name']
+                    ?? ''
+                )
+                . ' '
+                . (string) (
+                    $order['customer_last_name']
+                    ?? $order['last_name']
+                    ?? ''
+                )
+            );
+        }
+
+        $shippingEmail = trim((string) (
+            $order['customer_email']
+            ?? $order['email']
+            ?? $submitted_email
+            ?? ''
+        ));
+
+        $shippingPhone = trim((string) (
+            $shippingSnapshot['phone']
+            ?? $order['shipping_phone']
+            ?? $order['customer_phone']
+            ?? $order['phone']
+            ?? ''
+        ));
+
+        $shippingLine1 = trim((string) (
+            $shippingSnapshot['address_line_1']
+            ?? $order['shipping_address_line_1']
+            ?? $order['customer_address_line_1']
+            ?? $order['address_line_1']
+            ?? ''
+        ));
+
+        $shippingLine2 = trim((string) (
+            $shippingSnapshot['address_line_2']
+            ?? $order['shipping_address_line_2']
+            ?? $order['customer_address_line_2']
+            ?? $order['address_line_2']
+            ?? ''
+        ));
+
+        $shippingCity = trim((string) (
+            $shippingSnapshot['city']
+            ?? $order['shipping_city']
+            ?? $order['customer_city']
+            ?? $order['city']
+            ?? ''
+        ));
+
+        $shippingState = trim((string) (
+            $shippingSnapshot['state_region']
+            ?? $order['shipping_state_region']
+            ?? $order['state_region']
+            ?? $order['customer_state']
+            ?? $order['state']
+            ?? ''
+        ));
+
+        $shippingPostal = trim((string) (
+            $shippingSnapshot['postal_code']
+            ?? $order['shipping_postal_code']
+            ?? $order['customer_postal_code']
+            ?? $order['postal_code']
+            ?? ''
+        ));
+
+        $shippingCountry = trim((string) (
+            $shippingSnapshot['country_code']
+            ?? $order['shipping_country_code']
+            ?? $order['country_code']
+            ?? $order['customer_country']
+            ?? $order['country']
+            ?? ''
+        ));
+
+        $shippingLocality = $shippingCity;
+
+        if ($shippingState !== '') {
+            $shippingLocality .=
+                ($shippingLocality !== '' ? ', ' : '')
+                . $shippingState;
+        }
+
+        if ($shippingPostal !== '') {
+            $shippingLocality .=
+                ($shippingLocality !== '' ? ' ' : '')
+                . $shippingPostal;
+        }
+
+        $shippingAddressLines = array_values(array_filter(
+            [
+                $shippingLine1,
+                $shippingLine2,
+                $shippingLocality,
+                $shippingCountry,
+            ],
+            static fn (string $value): bool => $value !== ''
+        ));
+        ?>
+
         <section class="order-confirmation-grid">
 
             <div class="checkout-form-panel">
@@ -194,33 +321,50 @@
                 <table class="confirmation-table">
                     <tr>
                         <th>Name</th>
-                        <td><?= htmlspecialchars($order['first_name'] . ' ' . $order['last_name']) ?></td>
+                        <td>
+                            <?= htmlspecialchars(
+                                $shippingName !== ''
+                                    ? $shippingName
+                                    : '—'
+                            ) ?>
+                        </td>
                     </tr>
 
                     <tr>
                         <th>Email</th>
-                        <td><?= htmlspecialchars($order['email']) ?></td>
+                        <td>
+                            <?= htmlspecialchars(
+                                $shippingEmail !== ''
+                                    ? $shippingEmail
+                                    : '—'
+                            ) ?>
+                        </td>
                     </tr>
 
                     <tr>
                         <th>Phone</th>
-                        <td><?= htmlspecialchars($order['phone'] ?? '—') ?></td>
+                        <td>
+                            <?= htmlspecialchars(
+                                $shippingPhone !== ''
+                                    ? $shippingPhone
+                                    : '—'
+                            ) ?>
+                        </td>
                     </tr>
 
                     <tr>
                         <th>Address</th>
                         <td>
-                            <?= htmlspecialchars($order['address_line_1']) ?><br>
-
-                            <?php if (! empty($order['address_line_2'])): ?>
-                                <?= htmlspecialchars($order['address_line_2']) ?><br>
+                            <?php if (empty($shippingAddressLines)): ?>
+                                —
+                            <?php else: ?>
+                                <?php foreach (
+                                    $shippingAddressLines as $index => $line
+                                ): ?>
+                                    <?php if ($index > 0): ?><br><?php endif; ?>
+                                    <?= htmlspecialchars($line) ?>
+                                <?php endforeach; ?>
                             <?php endif; ?>
-
-                            <?= htmlspecialchars($order['city']) ?>,
-                            <?= htmlspecialchars($order['state']) ?>
-                            <?= htmlspecialchars($order['postal_code']) ?><br>
-
-                            <?= htmlspecialchars($order['country']) ?>
                         </td>
                     </tr>
                 </table>
