@@ -1,16 +1,22 @@
-# Git Checklist — Public Storefront Phase 3
+# Git Checklist — Public Storefront Phase 3 Closeout
 
-The working tree was clean before this milestone.
+Phase 3 browser acceptance passed on 2026-08-23.
 
-Use targeted staging so the Phase 3 commit contains only customer-account and
-tracking work.
+The original Phase 3 package was committed as:
 
-## Before installation
+```text
+b08ad31 Polish customer account and order tracking experience
+```
+
+This closeout commit captures the acceptance repairs discovered after that
+commit and records the final PASS state in the storefront documentation.
+
+## 1. Confirm branch and working tree
 
 ```powershell
 cd C:\xampp\htdocs\alasne.net
-git status
 git branch --show-current
+git status
 ```
 
 Expected branch:
@@ -19,74 +25,102 @@ Expected branch:
 feature/returns-and-restocking
 ```
 
-## Install
-
-Extract the Phase 3 ZIP over the project root.
-
-Then:
+## 2. Review the acceptance-repair code
 
 ```powershell
-composer dump-autoload -o
+git diff -- app/Services/Checkout/CheckoutService.php
+git diff -- app/Repositories/OrderRepository.php
+git diff -- app/Repositories/StoreRepository.php
 ```
 
-No migration is required.
+The expected code changes are limited to:
 
-## Review changes
+- immutable shipping-address snapshot persistence during storefront checkout
+- complete payment/shipping-method snapshot reads for orders
+- public tracking access to the immutable shipping-address snapshot
+- order-item SKU compatibility required by the repaired order views
+
+## 3. Replace the closeout documentation
+
+Replace these complete files with the Phase 3 closeout versions:
+
+```text
+docs/storefront/ROADMAP.md
+docs/storefront/TESTING-CHECKLIST.md
+docs/storefront/PHASE-3-CUSTOMER-ACCOUNT-TRACKING.md
+docs/storefront/CHANGELOG.md
+docs/storefront/GIT-CHECKLIST.md
+```
+
+## 4. Validate PHP syntax
 
 ```powershell
+php -l app/Services/Checkout/CheckoutService.php
+php -l app/Repositories/OrderRepository.php
+php -l app/Repositories/StoreRepository.php
+```
+
+Expected for all three:
+
+```text
+No syntax errors detected
+```
+
+## 5. Review final diff
+
+```powershell
+git diff --check
+git diff --stat
 git status
-git diff -- app/Controllers/CustomerAccountController.php
-git diff -- app/Repositories/CustomerPortalRepository.php
-git diff -- app/Services/Customers/CustomerPortalService.php
-git diff -- app/Views/storefront/customer-account-login.php
-git diff -- app/Views/storefront/customer-account-link-sent.php
-git diff -- app/Views/storefront/customer-account-dashboard.php
-git diff -- app/Views/storefront/customer-account-order.php
-git diff -- app/Views/storefront/customer-account-store-credit.php
-git diff -- app/Views/storefront/track-order.php
-git diff -- public/assets/css/storefront.css
-git diff -- docs/storefront
-git diff -- STOREFRONT-CUSTOMER-ACCOUNT-TRACKING-INSTALL.md
 ```
 
-## Stage only Phase 3
+`git diff --check` should return no output.
+
+## 6. Stage only the Phase 3 closeout
 
 ```powershell
-git add app/Controllers/CustomerAccountController.php
-git add app/Repositories/CustomerPortalRepository.php
-git add app/Services/Customers/CustomerPortalService.php
-git add app/Views/storefront/customer-account-login.php
-git add app/Views/storefront/customer-account-link-sent.php
-git add app/Views/storefront/customer-account-dashboard.php
-git add app/Views/storefront/customer-account-order.php
-git add app/Views/storefront/customer-account-store-credit.php
-git add app/Views/storefront/track-order.php
-git add public/assets/css/storefront.css
-git add docs/storefront
-git add STOREFRONT-CUSTOMER-ACCOUNT-TRACKING-INSTALL.md
-
+git add app/Services/Checkout/CheckoutService.php
+git add app/Repositories/OrderRepository.php
+git add app/Repositories/StoreRepository.php
+git add docs/storefront/ROADMAP.md
+git add docs/storefront/TESTING-CHECKLIST.md
+git add docs/storefront/PHASE-3-CUSTOMER-ACCOUNT-TRACKING.md
+git add docs/storefront/CHANGELOG.md
+git add docs/storefront/GIT-CHECKLIST.md
 git status
 ```
 
-## Recommended commit
+Do not stage unrelated files.
 
-After Phase 3 acceptance tests pass:
+## 7. Commit and push
+
+Recommended closeout commit:
 
 ```powershell
-git commit -m "Polish customer account and order tracking experience"
+git commit -m "Close storefront Phase 3 acceptance and shipping snapshots"
 git push
 ```
 
-## Verify
+## 8. Verify
 
 ```powershell
 git status
-git log -1 --oneline
+git log -2 --oneline
 ```
 
 Expected:
 
 ```text
 working tree clean
-latest commit = Phase 3 customer account/tracking milestone
+latest commit = Phase 3 acceptance closeout
+previous Phase 3 package commit = b08ad31
+```
+
+## 9. Begin Phase 4
+
+After the closeout commit is pushed:
+
+```text
+Phase 4 — Returns + RMA Customer Experience
+Phase 4A — Return Eligibility & Request Experience
 ```

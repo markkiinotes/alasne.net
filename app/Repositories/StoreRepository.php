@@ -815,42 +815,54 @@ class StoreRepository
     }
 
     public function publicOrderForStoreByNumberAndEmail(
-		int $storeId,
-		string $orderNumber,
-		string $email
-	): ?array {
-		$stmt = $this->db->prepare("
-			SELECT
-				o.*,
+        int $storeId,
+        string $orderNumber,
+        string $email
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT
+                o.*,
 
-				s.name AS store_name,
-				s.slug AS store_slug,
+                s.name AS store_name,
+                s.slug AS store_slug,
 
-				c.first_name AS customer_first_name,
-				c.last_name AS customer_last_name,
-				c.email AS customer_email,
-				c.phone AS customer_phone,
+                c.first_name AS customer_first_name,
+                c.last_name AS customer_last_name,
+                c.email AS customer_email,
+                c.phone AS customer_phone,
 
-				CONCAT(c.first_name, ' ', c.last_name) AS customer_name
-			FROM orders o
-			INNER JOIN stores s ON s.id = o.store_id
-			INNER JOIN customers c ON c.id = o.customer_id
-			WHERE o.store_id = :store_id
-			AND o.order_number = :order_number
-			AND LOWER(c.email) = LOWER(:email)
-			LIMIT 1
-		");
+                CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
 
-		$stmt->execute([
-			'store_id' => $storeId,
-			'order_number' => $orderNumber,
-			'email' => $email,
-		]);
+                oa.full_name AS shipping_full_name,
+                oa.address_line_1 AS shipping_address_line_1,
+                oa.address_line_2 AS shipping_address_line_2,
+                oa.city AS shipping_city,
+                oa.state_region AS shipping_state_region,
+                oa.postal_code AS shipping_postal_code,
+                oa.country_code AS shipping_country_code,
+                oa.phone AS shipping_phone
+            FROM orders o
+            INNER JOIN stores s ON s.id = o.store_id
+            INNER JOIN customers c ON c.id = o.customer_id
+            LEFT JOIN order_addresses oa
+                ON oa.order_id = o.id
+                AND oa.type = 'shipping'
+            WHERE o.store_id = :store_id
+            AND o.order_number = :order_number
+            AND LOWER(c.email) = LOWER(:email)
+            LIMIT 1
+        ");
 
-		$order = $stmt->fetch();
+        $stmt->execute([
+            'store_id' => $storeId,
+            'order_number' => $orderNumber,
+            'email' => $email,
+        ]);
 
-		return $order ?: null;
-	}
+        $order = $stmt->fetch();
+
+        return $order ?: null;
+    }
 
     public function publicEventsForOrder(int $orderId): array
     {

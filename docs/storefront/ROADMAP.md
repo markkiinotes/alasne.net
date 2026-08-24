@@ -29,7 +29,7 @@ Validated:
 
 ## Phase 3 — Customer Account + Order Tracking
 
-Status: package built / acceptance test next
+Status: complete / browser acceptance passed 2026-08-23
 
 Delivered:
 
@@ -48,10 +48,35 @@ Delivered:
 - customer-safe shipment tracking
 - supplier identity removed from customer shipment data
 - public tracking presentation polish
+- immutable shipping-address snapshot persistence for new storefront orders
+- shipping-method/payment snapshot visibility in Mission Control
+- public tracking address sourced from the immutable order snapshot
 
-No new migration and no checkout/payment behavior changes.
+Acceptance verified:
+
+- real secure-link email delivery and login
+- single-use token rejection
+- dashboard/order-history data
+- customer order detail
+- store-credit history
+- profile persistence
+- secure sign out
+- public tracking positive and negative ownership checks
+- wrong-postal-code privacy behavior
+- cross-customer order ownership protection
+- return/RMA eligibility regression
+- checkout/payment/inventory and notification-event behavior
+- supplier-routing integration boundary preserved
+
+The store-mismatch-token test is deferred until a second store is available.
+
+No new migration was added. Existing `order_addresses` infrastructure is now
+used consistently by storefront checkout and public tracking. Payment approval,
+refund, cart, and inventory business rules remain unchanged.
 
 ## Phase 4 — Returns + RMA Customer Experience
+
+Status: next
 
 Goals:
 

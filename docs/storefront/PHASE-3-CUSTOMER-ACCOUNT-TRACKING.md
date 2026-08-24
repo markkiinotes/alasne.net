@@ -1,14 +1,16 @@
 # Phase 3 — Customer Account + Order Tracking
 
+Status: COMPLETE — browser acceptance passed 2026-08-23
+
 ## Purpose
 
 Turn the existing customer portal and public tracking surfaces into a cohesive
-post-purchase customer experience without rebuilding authentication, checkout,
-payments, returns, or fulfillment.
+post-purchase customer experience without rebuilding authentication, payments,
+returns, or fulfillment.
 
 ## Existing architecture preserved
 
-The existing portal already provides:
+The existing portal provides:
 
 ```text
 email + postal-code account lookup
@@ -27,30 +29,25 @@ Phase 3 builds on those contracts.
 
 ### Store-bound one-time links
 
-Before this milestone, a valid token could be looked up and marked used before
-the controller rejected a mismatched store URL.
-
-Now `consumeToken()` receives the expected store ID and verifies it before the
-token is consumed.
+`consumeToken()` receives the expected store ID and verifies it before the token
+is consumed.
 
 Result:
 
 ```text
 valid token + correct store URL
-    → token claimed once
-    → login succeeds
+    -> token claimed once
+    -> login succeeds
 
 valid token + wrong store URL
-    → rejected
-    → token remains usable at its correct store URL
+    -> rejected
+    -> token remains usable at its correct store URL
 ```
 
 ### Atomic single-use claim
 
-`markTokenUsed()` now returns success only when its conditional UPDATE changes
-one row.
-
-Two simultaneous requests cannot both authenticate with the same one-time
+`markTokenUsed()` returns success only when its conditional UPDATE changes one
+row. Two simultaneous requests cannot both authenticate with the same one-time
 token.
 
 ### Session rotation
@@ -60,15 +57,15 @@ preserving session data.
 
 ### CSRF-protected sign out
 
-The account Sign Out POST now carries and validates the existing CSRF token.
+The account Sign Out POST carries and validates the existing CSRF token.
+
+Browser acceptance confirmed that sign out invalidates account access and that
+browser Back or a consumed magic link cannot restore the signed-out session.
 
 ### Failed checkout attempts
 
-Phase 2 proved that Declined and Provider Error attempts intentionally create
-failed/cancelled payment records for auditability while preserving the cart and
-inventory.
-
-Those records are operational payment attempts, not purchases.
+Declined and Provider Error attempts remain operational payment records for
+auditability rather than purchases.
 
 Customer account:
 
@@ -78,9 +75,9 @@ order count
 last order
 ```
 
-now exclude orders whose `payment_status = failed`.
+exclude orders whose `payment_status = failed`.
 
-Account "Net paid" uses:
+Account Net Paid uses:
 
 ```text
 amount_paid - amount_refunded
@@ -90,8 +87,8 @@ floored at zero per order.
 
 ### Customer-safe shipment data
 
-The account portal no longer selects or renders supplier identity from internal
-purchase orders.
+The account portal does not expose supplier identity from internal purchase
+orders.
 
 Customer shipment data is limited to:
 
@@ -116,6 +113,59 @@ provider/integration metadata
 submission payloads/responses
 ```
 
+## Immutable order shipping snapshot
+
+Phase 3 acceptance uncovered a pre-existing checkout gap: a new paid storefront
+order could have valid shipping/customer data and a shipping charge while still
+lacking its immutable `order_addresses` shipping snapshot.
+
+That was corrected during acceptance.
+
+For new storefront orders, checkout now persists the shipping-address snapshot
+using the existing `order_addresses` schema. Mission Control invoice/packing
+surfaces and public order tracking read that immutable order-time snapshot.
+
+This prevents a later customer profile edit from changing the historical ship-to
+address shown for an earlier order.
+
+Historical orders that never received a snapshot remain unchanged rather than
+being backfilled from mutable profile data.
+
+## Payment and shipping-method visibility
+
+The order repository now exposes the newer payment and shipping-method snapshot
+fields required by Mission Control. Acceptance verified:
+
+```text
+Payment Status: Paid
+payment method/provider
+amount paid/refundable
+paid timestamp
+shipping method name/code
+shipping estimate
+shipping charge
+```
+
+The underlying payment approval, refund, cart, and inventory business rules were
+not changed by this repair.
+
+## Public tracking ownership and address behavior
+
+Public tracking continues to require the matching store, order number, and
+customer email.
+
+Acceptance verified:
+
+```text
+valid order + matching email
+    -> public order details shown
+    -> immutable shipping snapshot shown
+
+valid order + wrong email
+    -> generic not-found response
+    -> no customer/order data exposed
+```
+
 ## Magic-link email boundary
 
 The one-time login URL is intentionally delivered directly through
@@ -126,8 +176,47 @@ contains a secret bearer token.
 
 This still benefits from the hardened email-queue claim/retry pipeline.
 
-## No migration
+## Acceptance summary
 
-Migration `000044` already established the customer portal schema.
+Passed:
 
-This milestone does not add or change database schema.
+- secure-link request and real email delivery
+- one-time token enforcement
+- dashboard/order history
+- customer order detail
+- receipt access
+- store-credit balance/history
+- profile persistence
+- secure sign out
+- public tracking positive lookup
+- public tracking wrong-email ownership check
+- wrong-postal-code account privacy check
+- cross-customer account-order ownership check
+- return/RMA eligibility regression
+- checkout/payment/inventory regression
+- post-payment notification event publication
+
+Deferred:
+
+```text
+store-mismatch-token browser test — second store required
+```
+
+## Database impact
+
+No new migration was added for Phase 3 closeout.
+
+The acceptance repair uses the already-existing `order_addresses` table and
+shipping-method/payment snapshot columns.
+
+## Result
+
+```text
+STOREFRONT PHASE 3 COMPLETE
+```
+
+Next:
+
+```text
+Phase 4 — Returns + RMA Customer Experience
+```

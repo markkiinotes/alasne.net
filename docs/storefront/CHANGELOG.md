@@ -1,5 +1,41 @@
 # Storefront Changelog
 
+## 2026-08-23 — Phase 3 acceptance closeout
+
+### Browser acceptance completed
+
+- passwordless account access validated through real email delivery
+- single-use token behavior validated
+- customer dashboard/order history validated
+- order detail, receipt, store credit, profile persistence, and sign out validated
+- public tracking positive/negative ownership paths validated
+- wrong-postal-code privacy behavior validated
+- cross-customer order ownership returned `404 - Order not found`
+- store-mismatch-token browser test deferred until a second store exists
+
+### Acceptance repairs
+
+- storefront checkout now persists the immutable shipping-address snapshot in the existing `order_addresses` table
+- Mission Control order reads include current payment and shipping-method snapshot fields
+- order item SKU compatibility normalized for storefront-created orders
+- public tracking now reads the immutable shipping snapshot instead of depending on mutable customer-profile address data
+
+### Regression gate
+
+- checkout/payment rules preserved
+- cart behavior preserved
+- inventory behavior preserved
+- `order.created` / `payment.captured` publication preserved
+- supplier-routing integration boundary preserved
+- existing return/RMA eligibility preserved
+- public tracking ownership enforcement preserved
+- email queue transport preserved
+
+### Database impact
+
+- no new migration
+- existing order-address and order snapshot schema used consistently
+
 ## 2026-08-23 — Phase 3: Customer Account + Order Tracking
 
 ### Added / improved

@@ -1,10 +1,13 @@
 # Storefront Phase 3 Testing Checklist
 
-No database migration is required.
+Phase 3 browser acceptance completed on 2026-08-23.
+
+No new database migration was required. The acceptance repair uses the existing
+`order_addresses` table for immutable shipping snapshots.
 
 Use the customer created by a successful Phase 2 storefront checkout.
 
-## A. Account access request
+## A. Account access request — PASS
 
 Open:
 
@@ -29,26 +32,14 @@ generic privacy-safe response
 no indication that another email does/does not exist
 ```
 
-For the first test, keeping:
+Validated:
 
-```dotenv
-EMAIL_QUEUE_TRANSPORT=log
-```
+- generic privacy-safe response rendered
+- secure account-link email entered the email outbox
+- real SMTP delivery succeeded
+- one-time URL opened the correct store-bound customer dashboard
 
-is safest.
-
-Process or inspect the queued access-link email in Mission Control and open the
-one-time URL.
-
-Expected:
-
-```text
-account dashboard opens
-customer name appears
-session is store-specific
-```
-
-## B. One-time token
+## B. One-time token — PASS
 
 After successful login, open the SAME magic-link URL again.
 
@@ -58,96 +49,67 @@ Expected:
 link rejected as invalid or expired
 ```
 
-The original successful account session should remain usable.
+Validated:
 
-## C. Account dashboard
+- reused link was rejected
+- the original authenticated session remained usable
+- after sign out, the used link could not restore access
+- a newly requested secure link established a fresh session
 
-Verify:
+## C. Account dashboard — PASS
 
-- successful/active order appears
-- Phase 2 Declined attempt does NOT appear as a purchase
-- Phase 2 Provider Error attempt does NOT appear as a purchase
-- order count does not count those failed-payment attempts
+Verified:
+
+- successful/active orders appear
+- failed-payment checkout attempts are excluded from purchase history
+- failed-payment attempts do not inflate order count
 - Net Paid reflects paid amount less recorded refunds
 - return count renders
 - store-credit balance renders
-- no PHP warnings/notices
+- no PHP warnings/notices observed
 
-## D. Order detail
+## D. Order detail — PASS
 
-Open the successful order.
-
-Verify:
+Verified:
 
 - order number/status/payment/total render
 - items render
 - order-level carrier/tracking render when present
 - customer-visible timeline renders
-- Print Receipt opens the existing protected public receipt
+- Print Receipt opens the protected public receipt
 - Request Return opens the existing return workflow
-- Track Order opens public tracking
+- customer-facing controls do not expose Mission Control fulfillment actions
+- supplier identity/cost/provider details are not exposed
 
-If purchase-order shipment records exist:
+## E. Store credit — PASS
 
-- cards are named `Shipment 1`, `Shipment 2`, etc.
-- carrier/tracking may render
-- supplier name/code is NOT displayed
-- supplier cost/profit/provider data is NOT displayed
+Verified:
 
-## E. Store credit
+- available balance renders correctly
+- return-credit issuance history renders
+- checkout-redemption history renders
+- running balance remains consistent
 
-Open:
+## F. Profile update — PASS
 
-```text
-/store/<store_slug>/account/store-credit
-```
+Verified:
 
-Expected with no credit:
+- profile save succeeded
+- success message appeared
+- updated value remained after browser refresh
+- later CSRF-protected account actions remained usable
 
-```text
-$0.00
-No store-credit activity yet
-```
+## G. Sign out — PASS
 
-Expected after a recorded store-credit return resolution:
+Verified:
 
-```text
-balance
-transaction type
-amount
-balance after
-note
-```
+- sign out redirected to customer account login
+- signed-out success message appeared
+- browser Back did not restore the authenticated dashboard
+- direct account access required a new secure login
+- previously consumed secure link remained invalid
 
-## F. Profile update
-
-Change a harmless test value such as Phone and save.
-
-Expected:
-
-```text
-profile saves
-success message appears
-CSRF remains valid for later actions
-```
-
-Restore the value if desired.
-
-## G. Sign out
-
-Use the account Sign Out button.
-
-Expected:
-
-```text
-redirect to customer account login
-success message says signed out
-dashboard requires a new secure login
-```
-
-Sign out is now CSRF-protected.
-
-## H. Public tracking regression
+## H. Public tracking regression — PASS
 
 Open:
 
@@ -155,78 +117,100 @@ Open:
 /store/<store_slug>/track
 ```
 
-Look up the successful order with order number + email.
-
-Verify:
+Verified with a fresh paid order:
 
 - no undefined-array-key warnings
-- shipping information renders safely
 - order totals render
-- carrier/tracking render
+- carrier/tracking state renders safely
 - public timeline renders
 - items render
 - Print Receipt works
 - My Account link works
-- only one global storefront footer appears
+- immutable shipping-address snapshot renders correctly
+- wrong email with a valid order number returns a generic not-found response
+- no customer/order detail is exposed on a failed ownership lookup
+
+### Shipping-snapshot acceptance repair
+
+Acceptance exposed an older gap: checkout-created orders were not always
+persisting an immutable shipping-address row even though the schema already
+supported it.
+
+The repair now ensures:
+
+```text
+paid storefront order
+    -> shipping-method snapshot stored on orders
+    -> immutable shipping-address snapshot stored in order_addresses
+    -> Mission Control invoice/packing data reads the snapshot
+    -> public tracking reads the same immutable snapshot
+```
+
+Historical orders that never received a snapshot are not silently rewritten
+from the customer's current profile.
 
 ## I. Security checks
 
-### Wrong postal code
+### Wrong postal code — PASS
 
-Request an account link using the correct email but wrong postal code.
-
-Expected:
+Validated:
 
 ```text
-same generic "check email" style response
-no new access-link email for that mismatch
+correct email + wrong postal code
+    -> same generic "check email" response
+    -> no new secure-link email queued
 ```
 
-### Another customer's order ID
+### Another customer's order ID — PASS
 
-If a second customer test record exists, while signed in as Customer A try:
+Validated while signed in as Customer A:
 
 ```text
 /store/<store_slug>/account/orders/<customer_B_order_id>
+    -> 404 - Order not found
 ```
 
-Expected:
+Ownership filtering was not weakened.
 
-```text
-404 - Order not found
-```
-
-Do not weaken ownership filtering to simplify this test.
-
-### Store mismatch token
-
-If a second store exists, open a valid Store A account token under a Store B
-session-link URL.
-
-Expected:
-
-```text
-Store B rejects it
-the token can still be used once at Store A
-```
-
-If only one store exists, mark this test:
+### Store mismatch token — DEFERRED
 
 ```text
 DEFERRED — SECOND STORE REQUIRED
 ```
 
-## J. Regression gate
+The store-bound token implementation remains in place; browser validation will
+be completed when a second storefront test store is available.
 
-Phase 3 is PASS only if these remain unchanged:
+## J. Regression gate — PASS
+
+Validated or preserved during Phase 3 acceptance:
 
 ```text
-checkout/payment behavior
-cart behavior
-inventory behavior
-order.created/payment.captured events
-supplier routing
-return/RMA eligibility
-public tracking ownership check
-email queue transport
+checkout/payment behavior              PASS
+cart behavior                          PASS
+inventory behavior                     PASS
+order.created/payment.captured events  PASS
+supplier routing boundary              PASS
+return/RMA eligibility                 PASS
+public tracking ownership check        PASS
+email queue transport                  PASS
+```
+
+Supplier note: the current test configuration generated no purchase order for
+the acceptance order. Phase 3 did not add or alter supplier-routing rules, and
+the post-payment notification/event publication boundary remains intact.
+
+Return/RMA note: a paid order that had not yet shipped or completed was
+correctly rejected with the existing eligibility rule.
+
+## Phase 3 result
+
+```text
+PASS — STOREFRONT PHASE 3 COMPLETE
+```
+
+Next milestone:
+
+```text
+Phase 4 — Returns + RMA Customer Experience
 ```
