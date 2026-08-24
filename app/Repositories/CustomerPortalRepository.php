@@ -158,16 +158,21 @@ class CustomerPortalRepository
         return $row ?: null;
     }
 
-    public function markTokenUsed(int $tokenId): void
+    public function markTokenUsed(int $tokenId): bool
     {
         $stmt = $this->db->prepare("
             UPDATE customer_portal_access_tokens
             SET used_at = NOW()
             WHERE id = :id
             AND used_at IS NULL
+            AND expires_at >= NOW()
         ");
 
-        $stmt->execute(['id' => $tokenId]);
+        $stmt->execute([
+            'id' => $tokenId,
+        ]);
+
+        return $stmt->rowCount() === 1;
     }
 
     public function recordLogin(
@@ -256,7 +261,13 @@ class CustomerPortalRepository
             . (string) ($customer['last_name'] ?? '')
         );
 
-        $subject = 'Your secure account link for ' . $store['name'];
+        $storeName = preg_replace(
+            '/[\r\n]+/',
+            ' ',
+            trim((string) ($store['name'] ?? 'Store'))
+        ) ?? 'Store';
+
+        $subject = 'Your secure account link for ' . $storeName;
         $bodyText = "Hi " . ($customerName ?: 'there') . ",\n\n"
             . "Use this secure link to access your customer account for "
             . $store['name']
@@ -267,9 +278,21 @@ class CustomerPortalRepository
             . " minutes and can only be used once.\n\n"
             . "If you did not request this link, you can ignore this email.";
 
-        $safeUrl = htmlspecialchars($accessUrl, ENT_QUOTES, 'UTF-8');
-        $safeName = htmlspecialchars($customerName ?: 'there', ENT_QUOTES, 'UTF-8');
-        $safeStore = htmlspecialchars((string) $store['name'], ENT_QUOTES, 'UTF-8');
+        $safeUrl = htmlspecialchars(
+            $accessUrl,
+            ENT_QUOTES | ENT_SUBSTITUTE,
+            'UTF-8'
+        );
+        $safeName = htmlspecialchars(
+            $customerName ?: 'there',
+            ENT_QUOTES | ENT_SUBSTITUTE,
+            'UTF-8'
+        );
+        $safeStore = htmlspecialchars(
+            $storeName,
+            ENT_QUOTES | ENT_SUBSTITUTE,
+            'UTF-8'
+        );
 
         $bodyHtml = "
             <div style=\"font-family:Arial,sans-serif;color:#111827;line-height:1.55;\">
@@ -325,11 +348,21 @@ class CustomerPortalRepository
         $orderStmt = $this->db->prepare("
             SELECT
                 COUNT(*) AS order_count,
-                COALESCE(SUM(grand_total), 0) AS lifetime_spend,
+                COALESCE(
+                    SUM(
+                        GREATEST(
+                            COALESCE(amount_paid, 0)
+                            - COALESCE(amount_refunded, 0),
+                            0
+                        )
+                    ),
+                    0
+                ) AS lifetime_spend,
                 MAX(created_at) AS last_order_at
             FROM orders
             WHERE store_id = :store_id
             AND customer_id = :customer_id
+            AND COALESCE(payment_status, '') <> 'failed'
         ");
         $orderStmt->execute([
             'store_id' => $storeId,
@@ -353,6 +386,7 @@ class CustomerPortalRepository
             FROM orders
             WHERE store_id = :store_id
             AND customer_id = :customer_id
+            AND COALESCE(payment_status, '') <> 'failed'
             ORDER BY created_at DESC, id DESC
             LIMIT " . max(1, min(100, $limit))
         );
@@ -373,6 +407,7 @@ class CustomerPortalRepository
             WHERE id = :order_id
             AND store_id = :store_id
             AND customer_id = :customer_id
+            AND COALESCE(payment_status, '') <> 'failed'
             LIMIT 1
         ");
 
@@ -426,11 +461,23 @@ class CustomerPortalRepository
             return [];
         }
 
+        /*
+         * Customer-facing shipment data deliberately excludes
+         * supplier identity, supplier references, costs, margin,
+         * provider/integration metadata, and submission payloads.
+         */
         $stmt = $this->db->prepare("
-            SELECT po.*, sup.name AS supplier_name, sup.code AS supplier_code
+            SELECT
+                po.id,
+                po.status,
+                po.tracking_status,
+                po.shipping_carrier,
+                po.tracking_number,
+                po.tracking_url,
+                po.expected_ship_at,
+                po.shipped_at,
+                po.delivered_at
             FROM purchase_orders po
-            INNER JOIN suppliers sup
-                ON sup.id = po.supplier_id
             WHERE po.order_id = :order_id
             ORDER BY po.id ASC
         ");

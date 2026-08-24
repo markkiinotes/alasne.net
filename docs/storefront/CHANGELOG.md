@@ -1,5 +1,49 @@
 # Storefront Changelog
 
+## 2026-08-23 — Phase 3: Customer Account + Order Tracking
+
+### Added / improved
+
+- polished passwordless account access
+- account dashboard and order-history experience
+- customer order detail and receipt access
+- store-credit presentation
+- shipment cards and public timeline
+- public tracking/account cross-navigation
+- responsive account/tracking styling
+
+### Security hardening
+
+- one-time login token verified against route store before consumption
+- atomic single-use token claim
+- session identifier rotation after successful login
+- CSRF-protected customer sign out
+- CR/LF-normalized secure-link email subject
+- HTML-safe secure-link email values
+
+### Correctness / privacy
+
+- failed payment checkout attempts excluded from customer purchase history
+- Net Paid summary uses paid minus refunded amount
+- supplier identity removed from customer-facing shipment query
+- supplier costs/profit/provider/integration data not selected for customer shipment view
+
+### Preserved
+
+- migration 000044
+- account route contracts
+- email + postal lookup
+- 30-minute one-time token lifetime
+- 8-hour customer portal session
+- order ownership filtering
+- public-only order timeline
+- checkout/payment/inventory behavior
+- return/RMA business rules
+
+### No migration
+
+Phase 3 is code, presentation, security, and documentation only.
+
 ## 2026-08-23 — Phase 2: Cart + Checkout Experience
 
 ### Added

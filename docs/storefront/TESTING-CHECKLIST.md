@@ -1,159 +1,232 @@
-# Storefront Phase 2 Testing Checklist
+# Storefront Phase 3 Testing Checklist
 
-## Prerequisite
+No database migration is required.
 
-Phase 1 storefront shell should already be installed.
+Use the customer created by a successful Phase 2 storefront checkout.
 
-No database migration is required for Phase 2.
-
-Use the development/test payment method for transaction testing. Do not enter
-real card data into a simulated provider.
-
-## A. Cart journey
-
-Start at:
-
-```text
-/store/<store_slug>
-```
-
-1. Open an in-stock product.
-2. Add quantity 1 to the cart.
-3. Open the Cart link.
-4. Verify the product, price, quantity, and line total.
-5. Change quantity and use the existing Update action.
-6. Confirm subtotal changes correctly.
-7. Remove the item.
-8. Confirm the empty-cart state.
-9. Re-add an item for checkout.
-
-PASS requires the existing cart actions to behave exactly as before the
-presentation package.
-
-## B. Checkout presentation
+## A. Account access request
 
 Open:
 
 ```text
-/store/<store_slug>/checkout
+/store/<store_slug>/account
 ```
+
+Enter the same:
+
+```text
+email
+postal code
+```
+
+used on the successful order.
+
+Expected:
+
+```text
+Check your email
+generic privacy-safe response
+no indication that another email does/does not exist
+```
+
+For the first test, keeping:
+
+```dotenv
+EMAIL_QUEUE_TRANSPORT=log
+```
+
+is safest.
+
+Process or inspect the queued access-link email in Mission Control and open the
+one-time URL.
+
+Expected:
+
+```text
+account dashboard opens
+customer name appears
+session is store-specific
+```
+
+## B. One-time token
+
+After successful login, open the SAME magic-link URL again.
+
+Expected:
+
+```text
+link rejected as invalid or expired
+```
+
+The original successful account session should remain usable.
+
+## C. Account dashboard
 
 Verify:
 
-- progress shows Cart → Checkout → Complete
-- Checkout is the current step
-- Contact Information is visible
-- Shipping Address is visible
-- active shipping methods are selectable
-- active payment methods are selectable
-- selected cards have a clear visual state
-- Development Test Scenario appears only for the test provider
-- Order Summary lists cart items
-- Edit Cart returns to the cart
-- selected shipping changes the estimated-before-tax display
-- page works at desktop and mobile widths
+- successful/active order appears
+- Phase 2 Declined attempt does NOT appear as a purchase
+- Phase 2 Provider Error attempt does NOT appear as a purchase
+- order count does not count those failed-payment attempts
+- Net Paid reflects paid amount less recorded refunds
+- return count renders
+- store-credit balance renders
+- no PHP warnings/notices
 
-## C. Approved test transaction
+## D. Order detail
 
-Use a fresh cart/order test.
+Open the successful order.
 
-Select:
+Verify:
+
+- order number/status/payment/total render
+- items render
+- order-level carrier/tracking render when present
+- customer-visible timeline renders
+- Print Receipt opens the existing protected public receipt
+- Request Return opens the existing return workflow
+- Track Order opens public tracking
+
+If purchase-order shipment records exist:
+
+- cards are named `Shipment 1`, `Shipment 2`, etc.
+- carrier/tracking may render
+- supplier name/code is NOT displayed
+- supplier cost/profit/provider data is NOT displayed
+
+## E. Store credit
+
+Open:
 
 ```text
-Development Test Scenario = Approved
+/store/<store_slug>/account/store-credit
 ```
 
-Submit checkout.
+Expected with no credit:
+
+```text
+$0.00
+No store-credit activity yet
+```
+
+Expected after a recorded store-credit return resolution:
+
+```text
+balance
+transaction type
+amount
+balance after
+note
+```
+
+## F. Profile update
+
+Change a harmless test value such as Phone and save.
 
 Expected:
 
 ```text
-payment approved
-checkout success page shown
-progress shows Complete
-order number shown
-order/payment totals shown
-cart cleared
-order is paid
-inventory reduced once for purchased quantity
-Track This Order link works
+profile saves
+success message appears
+CSRF remains valid for later actions
 ```
 
-Also verify Mission Control records the expected order/payment transaction
-and that the notification/Event Bridge behavior remains intact.
+Restore the value if desired.
 
-## D. Declined test transaction
+## G. Sign out
 
-Use a fresh cart state and select:
+Use the account Sign Out button.
+
+Expected:
 
 ```text
-Development Test Scenario = Declined
+redirect to customer account login
+success message says signed out
+dashboard requires a new secure login
+```
+
+Sign out is now CSRF-protected.
+
+## H. Public tracking regression
+
+Open:
+
+```text
+/store/<store_slug>/track
+```
+
+Look up the successful order with order number + email.
+
+Verify:
+
+- no undefined-array-key warnings
+- shipping information renders safely
+- order totals render
+- carrier/tracking render
+- public timeline renders
+- items render
+- Print Receipt works
+- My Account link works
+- only one global storefront footer appears
+
+## I. Security checks
+
+### Wrong postal code
+
+Request an account link using the correct email but wrong postal code.
+
+Expected:
+
+```text
+same generic "check email" style response
+no new access-link email for that mismatch
+```
+
+### Another customer's order ID
+
+If a second customer test record exists, while signed in as Customer A try:
+
+```text
+/store/<store_slug>/account/orders/<customer_B_order_id>
 ```
 
 Expected:
 
 ```text
-checkout returns with a payment failure message
-cart remains available
-inventory is NOT deducted
-customer can correct/retry checkout
+404 - Order not found
 ```
 
-A failed order/payment-attempt record may still exist in Mission Control
-because the checkout engine creates the order and payment transaction before
-the provider result is finalized. Do not treat that record alone as a bug.
+Do not weaken ownership filtering to simplify this test.
 
-## E. Provider Error test
+### Store mismatch token
 
-Select:
+If a second store exists, open a valid Store A account token under a Store B
+session-link URL.
+
+Expected:
 
 ```text
-Development Test Scenario = Provider Error
+Store B rejects it
+the token can still be used once at Store A
 ```
 
-Expected customer behavior:
+If only one store exists, mark this test:
 
 ```text
-checkout displays an error
-cart remains available
-inventory is NOT deducted
+DEFERRED — SECOND STORE REQUIRED
 ```
 
-Verify the error does not expose credentials, tokens, or a PHP stack trace.
+## J. Regression gate
 
-## F. Server-authority checks
-
-The browser estimate is not authoritative.
-
-Confirm on an approved order:
+Phase 3 is PASS only if these remain unchanged:
 
 ```text
-final tax comes from the server
-final shipping matches selected active method
-final total is server-calculated
-inventory changes only after payment approval
-```
-
-## G. Regression gate
-
-Phase 2 is PASS only if the following remain unchanged:
-
-```text
-CheckoutController behavior
-CheckoutService behavior
-payment provider behavior
-payment transaction records
-inventory calculations
-order.created event
-payment.captured event
+checkout/payment behavior
+cart behavior
+inventory behavior
+order.created/payment.captured events
 supplier routing
-return/RMA logic
-```
-
-## H. Git
-
-After PASS, follow:
-
-```text
-docs/storefront/GIT-CHECKLIST.md
+return/RMA eligibility
+public tracking ownership check
+email queue transport
 ```

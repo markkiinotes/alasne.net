@@ -112,8 +112,16 @@
 						href="/store/<?= htmlspecialchars($store['slug']) ?>/receipt?<?= htmlspecialchars($receiptQuery) ?>"
 						class="storefront-button"
 						target="_blank"
+						rel="noopener noreferrer"
 					>
 						Print Receipt
+					</a>
+
+					<a
+						href="/store/<?= htmlspecialchars($store['slug']) ?>/account"
+						class="storefront-button storefront-button-secondary"
+					>
+						My Account
 					</a>
 				</div>
 			
@@ -445,12 +453,3 @@
 
 </main>
 
-<footer class="storefront-footer">
-    <div class="storefront-container">
-        <p>
-            &copy; <?= date('Y') ?>
-            <?= htmlspecialchars($store['name']) ?>.
-            Powered by Alasne.
-        </p>
-    </div>
-</footer>

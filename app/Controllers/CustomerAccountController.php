@@ -138,14 +138,12 @@ class CustomerAccountController extends Controller
         $token = (string) ($request->route('token') ?? '');
         $access = $this->service->consumeToken(
             $token,
+            (int) $store['id'],
             $this->ipAddress(),
             $this->userAgent()
         );
 
-        if (
-            ! $access
-            || (int) $access['store_id'] !== (int) $store['id']
-        ) {
+        if (! $access) {
             $_SESSION['customer_account_error'] =
                 'That account link is invalid or expired. Request a new secure link.';
 
@@ -156,6 +154,14 @@ class CustomerAccountController extends Controller
             );
 
             return null;
+        }
+
+        /*
+         * Rotate the PHP session identifier after a successful
+         * one-time-link authentication while preserving session data.
+         */
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
         }
 
         $_SESSION['customer_portal_access'][(string) $store['slug']] =
@@ -191,7 +197,7 @@ class CustomerAccountController extends Controller
                 'orders' => $this->portal->orders(
                     (int) $context['store']['id'],
                     (int) $context['customer']['id'],
-                    10
+                    25
                 ),
                 'returns' => $this->portal->returnsForCustomer(
                     (int) $context['store']['id'],
@@ -324,22 +330,39 @@ class CustomerAccountController extends Controller
     {
         $store = $this->storeFromRequest($request);
 
-        if ($store) {
-            unset($_SESSION['customer_portal_access'][(string) $store['slug']]);
-            $_SESSION['customer_account_success'] = 'You have been signed out.';
+        if (! $store) {
+            http_response_code(404);
 
-            $this->response->redirect(
-                '/store/'
-                . rawurlencode((string) $store['slug'])
-                . '/account'
-            );
-
-            return null;
+            return '404 - Store not found';
         }
 
-        http_response_code(404);
+        if (! $this->validateCsrf()) {
+            $_SESSION['customer_account_error'] =
+                'Security token expired. Please try again.';
 
-        return '404 - Store not found';
+            return $this->redirectDashboard(
+                (string) $store['slug']
+            );
+        }
+
+        unset(
+            $_SESSION['customer_portal_access'][
+                (string) $store['slug']
+            ]
+        );
+
+        $this->csrf->regenerate();
+
+        $_SESSION['customer_account_success'] =
+            'You have been signed out.';
+
+        $this->response->redirect(
+            '/store/'
+            . rawurlencode((string) $store['slug'])
+            . '/account'
+        );
+
+        return null;
     }
 
     private function renderLogin(

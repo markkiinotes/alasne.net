@@ -74,22 +74,45 @@ class CustomerPortalService
 
     public function consumeToken(
         string $token,
+        int $expectedStoreId,
         ?string $ipAddress,
         ?string $userAgent
     ): ?array {
         $token = trim($token);
 
-        if ($token === '' || strlen($token) < 40) {
+        if (
+            $token === ''
+            || strlen($token) < 40
+            || $expectedStoreId <= 0
+        ) {
             return null;
         }
 
         $access = $this->portal->tokenByPlainToken($token);
 
-        if (! $access) {
+        if (
+            ! $access
+            || (int) ($access['store_id'] ?? 0)
+                !== $expectedStoreId
+        ) {
+            /*
+             * A valid token opened under another store URL must not
+             * be consumed. The customer may still use the original
+             * store-specific link.
+             */
             return null;
         }
 
-        $this->portal->markTokenUsed((int) $access['id']);
+        /*
+         * markTokenUsed() is an atomic claim. If two requests race
+         * to use the same one-time token, only one can succeed.
+         */
+        if (! $this->portal->markTokenUsed(
+            (int) $access['id']
+        )) {
+            return null;
+        }
+
         $this->portal->recordLogin(
             (int) $access['store_id'],
             (int) $access['customer_id'],

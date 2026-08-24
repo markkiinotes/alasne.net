@@ -10,40 +10,46 @@ Delivered:
 - store identity
 - responsive navigation
 - accessibility baseline
-- modernized home/category/product styling
-- compatibility styling for existing customer surfaces
+- home/category/product polish
 - Git documentation
 
 ## Phase 2 — Cart + Checkout Experience
+
+Status: complete / browser validated
+
+Validated:
+
+- approved payment
+- declined payment
+- provider error
+- cart preservation on failure
+- inventory preservation on failure
+- successful tracking lookup
+- tracking shipping-information repair
+
+## Phase 3 — Customer Account + Order Tracking
 
 Status: package built / acceptance test next
 
 Delivered:
 
-- cart visual refinement through existing class contracts
-- checkout progress
-- clearer checkout section hierarchy
-- shipping/payment selection polish
-- development payment-test clarity
-- order-summary refinement
-- checkout-success refinement
-- Approved / Declined / Provider Error browser test plan
-
-No payment, inventory, order, notification, or supplier business logic is
-replaced.
-
-## Phase 3 — Customer Account + Order Tracking
-
-Goals:
-
-- customer account landing/dashboard
-- passwordless/magic-link UX
+- passwordless one-time-link customer login
+- store-bound access-token consumption
+- atomic single-use token claim
+- session ID rotation after authentication
+- CSRF-protected sign out
+- customer account dashboard
 - order history
+- failed-payment checkout attempts hidden from purchase history
+- net-paid account summary
 - order detail
-- store credit visibility
-- public tracking lookup
-- timeline presentation
 - receipt access
+- store credit
+- customer-safe shipment tracking
+- supplier identity removed from customer shipment data
+- public tracking presentation polish
+
+No new migration and no checkout/payment behavior changes.
 
 ## Phase 4 — Returns + RMA Customer Experience
 
@@ -73,6 +79,3 @@ Goals:
 - payment/inventory/supplier-routing verification
 - return/RMA verification
 - production deployment checklist
-
-At Phase 5, the notification audit's previously deferred customer-journey
-tests can be formally closed.

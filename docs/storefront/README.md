@@ -115,3 +115,33 @@ Provider Error
 
 This lets the customer-facing purchase journey be tested without entering
 real payment-card data.
+
+
+## Phase 3 — Customer Account + Order Tracking
+
+Phase 3 productizes the post-purchase customer experience already present in
+Alasne.
+
+Delivered:
+
+- secure passwordless customer account access
+- polished account dashboard
+- customer order history
+- customer-safe order detail
+- receipt access
+- store-credit history
+- customer-visible shipment tracking
+- public order timeline polish
+- tracking-page integration
+- customer portal security/correctness hardening
+
+Phase 3 deliberately keeps one-time access-link delivery on the secure direct
+email-outbox path. The secret login token is not copied into Event Bridge
+payload/audit records.
+
+See:
+
+```text
+PHASE-3-CUSTOMER-ACCOUNT-TRACKING.md
+TESTING-CHECKLIST.md
+```

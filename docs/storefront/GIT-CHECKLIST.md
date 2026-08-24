@@ -1,18 +1,9 @@
-# Git Checklist — Public Storefront Phase 2
+# Git Checklist — Public Storefront Phase 3
 
-This milestone must be committed with its storefront documentation.
+The working tree was clean before this milestone.
 
-## Existing unrelated file
-
-The repository previously contained this unrelated untracked file:
-
-```text
-TRACKING-UPDATED-TEMPLATE-CONTRACT-REPAIR-INSTALL.md
-```
-
-Do not accidentally stage it with this storefront milestone.
-
-Use targeted `git add` commands. Do not use `git add .`.
+Use targeted staging so the Phase 3 commit contains only customer-account and
+tracking work.
 
 ## Before installation
 
@@ -22,7 +13,7 @@ git status
 git branch --show-current
 ```
 
-The working branch previously observed was:
+Expected branch:
 
 ```text
 feature/returns-and-restocking
@@ -30,7 +21,7 @@ feature/returns-and-restocking
 
 ## Install
 
-Extract the Phase 2 ZIP over the project root.
+Extract the Phase 3 ZIP over the project root.
 
 Then:
 
@@ -44,53 +35,58 @@ No migration is required.
 
 ```powershell
 git status
-git diff -- app/Views/layouts/storefront.php
-git diff -- app/Views/storefront/checkout.php
-git diff -- app/Views/storefront/checkout-success.php
+git diff -- app/Controllers/CustomerAccountController.php
+git diff -- app/Repositories/CustomerPortalRepository.php
+git diff -- app/Services/Customers/CustomerPortalService.php
+git diff -- app/Views/storefront/customer-account-login.php
+git diff -- app/Views/storefront/customer-account-link-sent.php
+git diff -- app/Views/storefront/customer-account-dashboard.php
+git diff -- app/Views/storefront/customer-account-order.php
+git diff -- app/Views/storefront/customer-account-store-credit.php
+git diff -- app/Views/storefront/track-order.php
 git diff -- public/assets/css/storefront.css
 git diff -- docs/storefront
-git diff -- STOREFRONT-CART-CHECKOUT-EXPERIENCE-INSTALL.md
+git diff -- STOREFRONT-CUSTOMER-ACCOUNT-TRACKING-INSTALL.md
 ```
 
-The layout is included cumulatively for safe installation; if it already
-matches Phase 1, Git may show no diff for that file.
-
-## Stage only Phase 2
+## Stage only Phase 3
 
 ```powershell
-git add app/Views/layouts/storefront.php
-git add app/Views/storefront/checkout.php
-git add app/Views/storefront/checkout-success.php
+git add app/Controllers/CustomerAccountController.php
+git add app/Repositories/CustomerPortalRepository.php
+git add app/Services/Customers/CustomerPortalService.php
+git add app/Views/storefront/customer-account-login.php
+git add app/Views/storefront/customer-account-link-sent.php
+git add app/Views/storefront/customer-account-dashboard.php
+git add app/Views/storefront/customer-account-order.php
+git add app/Views/storefront/customer-account-store-credit.php
+git add app/Views/storefront/track-order.php
 git add public/assets/css/storefront.css
 git add docs/storefront
-git add STOREFRONT-CART-CHECKOUT-EXPERIENCE-INSTALL.md
-```
+git add STOREFRONT-CUSTOMER-ACCOUNT-TRACKING-INSTALL.md
 
-Then:
-
-```powershell
 git status
 ```
 
-Review the staged file list before committing.
-
 ## Recommended commit
 
-After the Approved / Declined / Provider Error browser tests pass:
+After Phase 3 acceptance tests pass:
 
 ```powershell
-git commit -m "Polish public cart and checkout experience"
+git commit -m "Polish customer account and order tracking experience"
 git push
 ```
 
-## Verify push
+## Verify
 
 ```powershell
 git status
 git log -1 --oneline
 ```
 
-The latest commit should be the storefront Phase 2 milestone.
+Expected:
 
-If the unrelated tracking installer is still intentionally untracked, Git
-may continue to list that one file separately.
+```text
+working tree clean
+latest commit = Phase 3 customer account/tracking milestone
+```
