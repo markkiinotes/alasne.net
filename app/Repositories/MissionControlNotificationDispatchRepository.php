@@ -101,12 +101,29 @@ class MissionControlNotificationDispatchRepository
     public function createOutboxMessage(array $message): int
     {
         if (! $this->tableExists('email_outbox')) {
-            throw new RuntimeException('The email_outbox table does not exist.');
+            throw new RuntimeException(
+                'The email_outbox table does not exist.'
+            );
         }
 
         $recipientColumn = $this->firstExistingColumn(
             'email_outbox',
             ['to_email', 'recipient_email', 'email', 'recipient']
+        );
+
+        $recipientNameColumn = $this->firstExistingColumn(
+            'email_outbox',
+            ['to_name', 'recipient_name', 'name']
+        );
+
+        $orderIdColumn = $this->firstExistingColumn(
+            'email_outbox',
+            ['order_id']
+        );
+
+        $storeIdColumn = $this->firstExistingColumn(
+            'email_outbox',
+            ['store_id']
         );
 
         $subjectColumn = $this->firstExistingColumn(
@@ -148,6 +165,47 @@ class MissionControlNotificationDispatchRepository
             'recipient',
             (string) $message['recipient']
         );
+
+        $recipientName = trim(
+            (string) ($message['recipient_name'] ?? '')
+        );
+
+        if ($recipientNameColumn && $recipientName !== '') {
+            $this->addInsertValue(
+                $columns,
+                $values,
+                $params,
+                $recipientNameColumn,
+                'recipient_name',
+                $recipientName
+            );
+        }
+
+        $orderId = (int) ($message['order_id'] ?? 0);
+
+        if ($orderIdColumn && $orderId > 0) {
+            $this->addInsertValue(
+                $columns,
+                $values,
+                $params,
+                $orderIdColumn,
+                'order_id',
+                $orderId
+            );
+        }
+
+        $storeId = (int) ($message['store_id'] ?? 0);
+
+        if ($storeIdColumn && $storeId > 0) {
+            $this->addInsertValue(
+                $columns,
+                $values,
+                $params,
+                $storeIdColumn,
+                'store_id',
+                $storeId
+            );
+        }
 
         $this->addInsertValue(
             $columns,
@@ -272,13 +330,31 @@ class MissionControlNotificationDispatchRepository
 
         $stmt->execute([
             'template_id' => $data['template_id'] ?? null,
-            'template_key' => $this->nullable($data['template_key'] ?? null, 120),
-            'recipient' => mb_substr((string) ($data['recipient'] ?? ''), 0, 255),
-            'subject' => mb_substr((string) ($data['subject'] ?? ''), 0, 255),
-            'status' => mb_substr((string) ($data['status'] ?? 'queued'), 0, 40),
+            'template_key' => $this->nullable(
+                $data['template_key'] ?? null,
+                120
+            ),
+            'recipient' => mb_substr(
+                (string) ($data['recipient'] ?? ''),
+                0,
+                255
+            ),
+            'subject' => mb_substr(
+                (string) ($data['subject'] ?? ''),
+                0,
+                255
+            ),
+            'status' => mb_substr(
+                (string) ($data['status'] ?? 'queued'),
+                0,
+                40
+            ),
             'email_outbox_id' => $data['email_outbox_id'] ?? null,
             'payload_json' => $data['payload_json'] ?? null,
-            'error_message' => $this->nullable($data['error_message'] ?? null, 1000),
+            'error_message' => $this->nullable(
+                $data['error_message'] ?? null,
+                1000
+            ),
             'queued_at' => ($data['status'] ?? 'queued') === 'queued'
                 ? date('Y-m-d H:i:s')
                 : null,
@@ -291,7 +367,10 @@ class MissionControlNotificationDispatchRepository
             $id,
             $data['email_outbox_id'] ?? null,
             (string) ($data['status'] ?? 'queued'),
-            (string) ($data['message'] ?? 'Notification dispatch recorded.'),
+            (string) (
+                $data['message']
+                ?? 'Notification dispatch recorded.'
+            ),
             $data['created_by'] ?? null
         );
 

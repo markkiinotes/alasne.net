@@ -43,8 +43,16 @@ class MissionControlNotificationDispatchService
             throw new RuntimeException('This notification template is disabled.');
         }
 
-        $payload = $this->payload($template, (string) ($data['payload_json'] ?? ''));
-        $rendered = $this->renderer->preview($templateId, $payload, $userId);
+        $payload = $this->payload(
+            $template,
+            (string) ($data['payload_json'] ?? '')
+        );
+
+        $rendered = $this->renderer->preview(
+            $templateId,
+            $payload,
+            $userId
+        );
 
         $missingVariables = array_values(
             array_map(
@@ -74,8 +82,26 @@ class MissionControlNotificationDispatchService
             throw new RuntimeException('Rendered message body is empty.');
         }
 
+        /*
+         * Event Bridge payloads already carry order/store/customer
+         * context for lifecycle notifications. Preserve that context
+         * when the rendered message is copied into email_outbox so
+         * Mission Control can join the queued email back to its order
+         * and store just like legacy/direct outbox messages do.
+         */
         $outboxId = $this->dispatches->createOutboxMessage([
             'recipient' => $recipient,
+            'recipient_name' => $this->nullableString(
+                $payload['customer_name']
+                ?? $payload['recipient_name']
+                ?? null
+            ),
+            'order_id' => $this->positiveIntOrNull(
+                $payload['order_id'] ?? null
+            ),
+            'store_id' => $this->positiveIntOrNull(
+                $payload['store_id'] ?? null
+            ),
             'subject' => $subject,
             'body_text' => $bodyText,
             'body_html' => $bodyHtml,
@@ -88,7 +114,10 @@ class MissionControlNotificationDispatchService
             'subject' => $subject,
             'status' => 'queued',
             'email_outbox_id' => $outboxId,
-            'payload_json' => json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            'payload_json' => json_encode(
+                $payload,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+            ),
             'message' => 'Notification rendered and queued to email outbox.',
             'created_by' => $userId,
         ]);
@@ -122,5 +151,19 @@ class MissionControlNotificationDispatchService
         }
 
         return $payload;
+    }
+
+    private function positiveIntOrNull(mixed $value): ?int
+    {
+        $value = (int) $value;
+
+        return $value > 0 ? $value : null;
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
     }
 }

@@ -539,8 +539,13 @@ class ReturnNotificationService
         );
 
         $authorizationHtml = '';
+        $returnStatus = (string) ($return['status'] ?? '');
+        $hasRma = ! empty($return['rma_number']);
+        $authorizationIsActive =
+            $hasRma
+            && $returnStatus === 'approved';
 
-        if (! empty($return['rma_number'])) {
+        if ($authorizationIsActive) {
             $authorizationHtml = '
                 <div style="padding:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;margin:22px 0;">
                     <strong>RMA:</strong>
@@ -615,6 +620,23 @@ class ReturnNotificationService
                                 )
                                 . '</p>'
                             : ''
+                    )
+                    . '
+                </div>
+            ';
+        } elseif (
+            $hasRma
+            && in_array(
+                $returnStatus,
+                ['received', 'completed'],
+                true
+            )
+        ) {
+            $authorizationHtml = '
+                <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin:22px 0;">
+                    <strong>RMA Reference:</strong> '
+                    . htmlspecialchars(
+                        (string) $return['rma_number']
                     )
                     . '
                 </div>
@@ -782,8 +804,13 @@ class ReturnNotificationService
         }
 
         $authorizationText = '';
+        $returnStatus = (string) ($return['status'] ?? '');
+        $hasRma = ! empty($return['rma_number']);
+        $authorizationIsActive =
+            $hasRma
+            && $returnStatus === 'approved';
 
-        if (! empty($return['rma_number'])) {
+        if ($authorizationIsActive) {
             $authorizationText =
                 "\nRMA: "
                 . $return['rma_number']
@@ -829,6 +856,18 @@ class ReturnNotificationService
                             ]
                         : ''
                 )
+                . "\n";
+        } elseif (
+            $hasRma
+            && in_array(
+                $returnStatus,
+                ['received', 'completed'],
+                true
+            )
+        ) {
+            $authorizationText =
+                "\nRMA Reference: "
+                . $return['rma_number']
                 . "\n";
         }
 

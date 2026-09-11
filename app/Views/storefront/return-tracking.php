@@ -17,6 +17,20 @@ $label = static fn (mixed $value): string =>
 $shipment = $shipment ?? null;
 $shipment_events = $shipment_events ?? [];
 
+$returnStatus = strtolower(
+    trim((string) ($return['status'] ?? ''))
+);
+
+$returnIsClosed = in_array(
+    $returnStatus,
+    ['received', 'completed', 'cancelled'],
+    true
+);
+
+$authorizationIsActive =
+    ! empty($return['rma_number'])
+    && $returnStatus === 'approved';
+
 $eventMessages = [
     'return_requested' =>
         'The store received the return request.',
@@ -384,14 +398,7 @@ $eventMessages = [
         </section>
 
 
-        <?php if (
-            ! empty($return['rma_number'])
-            && ! in_array(
-                $return['status'],
-                ['requested', 'cancelled'],
-                true
-            )
-        ): ?>
+        <?php if ($authorizationIsActive): ?>
             <section class="return-track-panel">
                 <h2>Return Authorization</h2>
 
@@ -512,7 +519,10 @@ $eventMessages = [
                         <a href="<?= $escape($shipment['tracking_url']) ?>" class="return-track-button" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;">Open Carrier Tracking</a>
                     <?php endif; ?>
 
-                    <?php if ($shipment['status'] !== 'cancelled'): ?>
+                    <?php if (
+                        $shipment['status'] !== 'cancelled'
+                        && ! $returnIsClosed
+                    ): ?>
                         <form method="POST" action="/store/<?= $escape($store['slug']) ?>/returns/shipping-label">
                             <input type="hidden" name="_csrf_token" value="<?= $escape($csrf_token) ?>">
                             <input type="hidden" name="return_number" value="<?= $escape($return_number) ?>">
