@@ -1,216 +1,301 @@
-# Storefront Phase 3 Testing Checklist
+# Storefront Acceptance Testing Checklist
 
-Phase 3 browser acceptance completed on 2026-08-23.
+## Phase 3 — Customer Account + Order Tracking
 
-No new database migration was required. The acceptance repair uses the existing
-`order_addresses` table for immutable shipping snapshots.
+Status: PASS / completed 2026-08-23
 
-Use the customer created by a successful Phase 2 storefront checkout.
+The detailed Phase 3 acceptance included:
 
-## A. Account access request — PASS
+- passwordless account login through real email delivery
+- one-time token reuse rejection
+- dashboard/order-history correctness
+- customer order detail and protected receipt
+- store-credit history
+- profile persistence
+- secure sign out
+- public order-tracking positive/negative ownership checks
+- wrong-postal-code privacy behavior
+- cross-customer order ownership protection
+- immutable shipping-address snapshot repair
+- checkout/payment/inventory regression
+- supplier-routing integration boundary preservation
 
-Open:
-
-```text
-/store/<store_slug>/account
-```
-
-Enter the same:
-
-```text
-email
-postal code
-```
-
-used on the successful order.
-
-Expected:
+Deferred:
 
 ```text
-Check your email
-generic privacy-safe response
-no indication that another email does/does not exist
+Store mismatch token — SECOND STORE REQUIRED
 ```
+
+## Phase 4 — Returns + RMA Customer Experience
+
+Status: PASS / completed 2026-09-11
+
+### A. Account return eligibility and request — PASS
 
 Validated:
 
-- generic privacy-safe response rendered
-- secure account-link email entered the email outbox
-- real SMTP delivery succeeded
-- one-time URL opened the correct store-bound customer dashboard
+- authenticated customer could enter return flow directly from My Account
+- customer did not need to re-enter order number/email
+- unshipped/ineligible order was rejected by server eligibility
+- shipped eligible order displayed return deadline
+- purchased quantity displayed correctly
+- already-requested quantity displayed correctly
+- available-to-return quantity displayed correctly
+- cross-customer `order_id` tampering returned `404 - Order not found`
+- submission of one unit created a return request
+- reopening the return form reduced remaining available quantity
 
-## B. One-time token — PASS
-
-After successful login, open the SAME magic-link URL again.
-
-Expected:
-
-```text
-link rejected as invalid or expired
-```
+### B. Approval and RMA — PASS
 
 Validated:
 
-- reused link was rejected
-- the original authenticated session remained usable
-- after sign out, the used link could not restore access
-- a newly requested secure link established a fresh session
+- Mission Control return approval succeeded
+- RMA number was generated
+- authorization issue/expiration timestamps were stored
+- return address displayed correctly
+- shipping responsibility displayed correctly
+- customer instructions displayed
+- printable authorization rendered customer/order/RMA/item data
+- approved-state public tracking retained authorization details and print action
 
-## C. Account dashboard — PASS
-
-Verified:
-
-- successful/active orders appear
-- failed-payment checkout attempts are excluded from purchase history
-- failed-payment attempts do not inflate order count
-- Net Paid reflects paid amount less recorded refunds
-- return count renders
-- store-credit balance renders
-- no PHP warnings/notices observed
-
-## D. Order detail — PASS
-
-Verified:
-
-- order number/status/payment/total render
-- items render
-- order-level carrier/tracking render when present
-- customer-visible timeline renders
-- Print Receipt opens the protected public receipt
-- Request Return opens the existing return workflow
-- customer-facing controls do not expose Mission Control fulfillment actions
-- supplier identity/cost/provider details are not exposed
-
-## E. Store credit — PASS
-
-Verified:
-
-- available balance renders correctly
-- return-credit issuance history renders
-- checkout-redemption history renders
-- running balance remains consistent
-
-## F. Profile update — PASS
-
-Verified:
-
-- profile save succeeded
-- success message appeared
-- updated value remained after browser refresh
-- later CSRF-protected account actions remained usable
-
-## G. Sign out — PASS
-
-Verified:
-
-- sign out redirected to customer account login
-- signed-out success message appeared
-- browser Back did not restore the authenticated dashboard
-- direct account access required a new secure login
-- previously consumed secure link remained invalid
-
-## H. Public tracking regression — PASS
-
-Open:
-
-```text
-/store/<store_slug>/track
-```
-
-Verified with a fresh paid order:
-
-- no undefined-array-key warnings
-- order totals render
-- carrier/tracking state renders safely
-- public timeline renders
-- items render
-- Print Receipt works
-- My Account link works
-- immutable shipping-address snapshot renders correctly
-- wrong email with a valid order number returns a generic not-found response
-- no customer/order detail is exposed on a failed ownership lookup
-
-### Shipping-snapshot acceptance repair
-
-Acceptance exposed an older gap: checkout-created orders were not always
-persisting an immutable shipping-address row even though the schema already
-supported it.
-
-The repair now ensures:
-
-```text
-paid storefront order
-    -> shipping-method snapshot stored on orders
-    -> immutable shipping-address snapshot stored in order_addresses
-    -> Mission Control invoice/packing data reads the snapshot
-    -> public tracking reads the same immutable snapshot
-```
-
-Historical orders that never received a snapshot are not silently rewritten
-from the customer's current profile.
-
-## I. Security checks
-
-### Wrong postal code — PASS
+### C. Return shipment and tracking — PASS
 
 Validated:
 
-```text
-correct email + wrong postal code
-    -> same generic "check email" response
-    -> no new secure-link email queued
-```
+- manual carrier/tracking fallback worked without EasyPost
+- carrier/service/tracking number could be saved
+- package-identification label rendered
+- `label_ready` event rendered
+- `in_transit` event rendered
+- `delivered` event rendered
+- customer-facing tracking showed shipment status/history
+- completed/received-state tracking no longer exposes stale package-label action
 
-### Another customer's order ID — PASS
+### D. Receiving and inventory — PASS
 
-Validated while signed in as Customer A:
+Validated:
 
-```text
-/store/<store_slug>/account/orders/<customer_B_order_id>
-    -> 404 - Order not found
-```
+- received quantity recorded
+- condition recorded
+- restock/discard quantities enforced
+- one returned unit restored one inventory unit
+- `return_restock` inventory-ledger movement was created
+- receiving did not double-adjust already-restocked inventory during resolution
 
-Ownership filtering was not weakened.
+### E. Store-credit resolution — PASS
 
-### Store mismatch token — DEFERRED
+Validated:
 
-```text
-DEFERRED — SECOND STORE REQUIRED
-```
+- approved return value allocated to store credit
+- return completed
+- store-credit balance updated
+- customer-facing resolution reflected store credit correctly
+- no external refund was created for the store-credit-only resolution
 
-The store-bound token implementation remains in place; browser validation will
-be completed when a second storefront test store is available.
+### F. Original-payment settlement and refund — PASS
 
-## J. Regression gate — PASS
-
-Validated or preserved during Phase 3 acceptance:
-
-```text
-checkout/payment behavior              PASS
-cart behavior                          PASS
-inventory behavior                     PASS
-order.created/payment.captured events  PASS
-supplier routing boundary              PASS
-return/RMA eligibility                 PASS
-public tracking ownership check        PASS
-email queue transport                  PASS
-```
-
-Supplier note: the current test configuration generated no purchase order for
-the acceptance order. Phase 3 did not add or alter supplier-routing rules, and
-the post-payment notification/event publication boundary remains intact.
-
-Return/RMA note: a paid order that had not yet shipped or completed was
-correctly rejected with the existing eligibility rule.
-
-## Phase 3 result
+Validated with a fresh post-fix checkout order:
 
 ```text
-PASS — STOREFRONT PHASE 3 COMPLETE
+grand_total                  60.94
+amount_paid                  60.94
+store_credit_applied_amount   0.00
+external_payment_amount      60.94
+amount_refunded               0.00 before return refund
 ```
 
-Next milestone:
+Return resolution produced:
 
 ```text
-Phase 4 — Returns + RMA Customer Experience
+external payment refund      49.99
+refund status                succeeded
 ```
+
+Payment ledger verified:
+
+```text
+charge #31  succeeded  60.94  refunded_amount 49.99
+refund #32  succeeded  49.99  parent_transaction_id 31
+```
+
+Order state verified:
+
+```text
+amount_refunded          49.99
+external_payment_amount  60.94
+payment_status           partially_refunded
+```
+
+### G. Over-refund protection — PASS
+
+Validated:
+
+- prior successful refund reduced remaining settled amount
+- second refund attempt above the remaining settled amount was rejected
+- return workflow did not duplicate the already-issued payment refund
+
+### H. Existing-refund reconciliation — PASS
+
+Validated:
+
+- a successful admin-side refund already existed
+- return workflow found the matching unlinked successful refund
+- existing refund transaction was linked to the return
+- no second refund transaction was created
+- return completed with the existing refund
+- activity recorded `Existing refund reconciled`
+
+### I. Return communications — PASS
+
+Validated:
+
+- return-request email queued/sent
+- received-merchandise email queued/sent
+- completed-return email queued/sent
+- completed-return email showed correct refund amount and status
+- completed/received email no longer presented stale shipping instructions
+- approved RMA notification queued through Event Bridge
+- queued RMA notification was delivered successfully
+- Event Bridge outbox path now preserves order/store/customer metadata for new messages
+
+### J. Public return tracking — PASS
+
+Completed return:
+
+- status `Completed`
+- correct order number
+- correct approved value
+- refund status `Succeeded`
+- RMA retained as historical reference
+- resolution `Refund`
+- external-payment refund `$49.99`
+- returned item/quantities correct
+- customer-safe activity timeline correct
+- stale authorization instructions hidden
+- stale Print Return Authorization action hidden
+
+Approved return regression:
+
+- status `Approved`
+- RMA visible
+- expiration visible
+- return address visible
+- shipping instructions visible
+- Print Return Authorization visible
+
+### K. My Account synchronization — PASS
+
+Validated:
+
+- original fulfillment status remained historically accurate
+- order timeline displayed `Return completed`
+- order timeline displayed `Refund issued`
+- customer-facing refund amount was `$49.99`
+- original order total remained unchanged
+- internal transaction/provider identifiers were not exposed
+
+### L. Privacy regression — PASS
+
+Validated with:
+
+```text
+valid return number + incorrect email address
+```
+
+Expected and observed:
+
+```text
+generic matching-return failure
+no customer name
+no order details
+no RMA details
+no refund details
+no returned-item details
+no return activity
+```
+
+## Phase 4 result
+
+```text
+PASS — STOREFRONT PHASE 4 COMPLETE
+```
+
+Closeout commits:
+
+```text
+6f396d2 Complete Phase 4 returns and refund workflow
+57ad103 Complete Phase 4 customer return communications and tracking
+```
+
+## Phase 5 — Storefront Launch Audit
+
+Status: ACTIVE
+
+### Phase 5A — Documentation alignment + launch baseline
+
+- [x] Phase 4 code committed and pushed
+- [x] Phase 4 customer acceptance completed
+- [x] working tree clean at Phase 5 kickoff
+- [x] branch confirmed as `feature/returns-and-restocking`
+- [ ] documentation closeout staged/committed
+- [ ] launch-audit baseline recorded
+
+### Phase 5B — Complete browser journey
+
+- [ ] storefront landing/catalog
+- [ ] category/product detail
+- [ ] cart
+- [ ] checkout success
+- [ ] checkout decline/provider failure
+- [ ] customer account login
+- [ ] account dashboard/order history
+- [ ] public order tracking
+- [ ] return request
+- [ ] return tracking
+- [ ] receipt/authorization print views
+
+### Phase 5C — Responsive + accessibility
+
+- [ ] mobile navigation
+- [ ] cart/checkout mobile layout
+- [ ] account/tracking mobile layout
+- [ ] returns mobile layout
+- [ ] keyboard-only journey
+- [ ] focus visibility
+- [ ] form labels/errors
+- [ ] reduced-motion behavior
+- [ ] contrast spot check
+
+### Phase 5D — SEO / states / performance
+
+- [ ] page titles
+- [ ] meta descriptions where appropriate
+- [ ] canonical/robots behavior
+- [ ] empty catalog/cart/account states
+- [ ] not-found/error states
+- [ ] loading/submission states
+- [ ] duplicate form submission protection
+- [ ] basic response/render performance review
+
+### Phase 5E — Business-flow regression
+
+- [ ] payment approval/decline/provider error
+- [ ] inventory sale/restock behavior
+- [ ] supplier-routing boundary
+- [ ] notification delivery
+- [ ] return/RMA lifecycle
+- [ ] over-refund protection
+- [ ] customer privacy/ownership
+
+### Phase 5F — Production readiness
+
+- [ ] environment/config review
+- [ ] production URL/base-path review
+- [ ] HTTPS/security headers
+- [ ] mail transport configuration
+- [ ] payment provider production configuration
+- [ ] carrier integration configuration
+- [ ] cron/scheduled worker review
+- [ ] logging/error-display review
+- [ ] database backup/migration plan
+- [ ] deployment/rollback checklist

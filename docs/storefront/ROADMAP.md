@@ -76,21 +76,71 @@ refund, cart, and inventory business rules remain unchanged.
 
 ## Phase 4 — Returns + RMA Customer Experience
 
-Status: next
+Status: complete / browser acceptance passed 2026-09-11
 
-Goals:
+Delivered:
 
-- returns policy presentation
-- order lookup for return eligibility
+- public returns policy presentation
+- public order lookup for return eligibility
+- authenticated My Account direct-return entry
+- server-owned eligibility and quantity enforcement
+- remaining-returnable-quantity accounting
 - return request workflow
-- authorization/RMA presentation
-- return tracking
-- shipping-label/authorization UX
-- store-credit resolution messaging
+- return approval and RMA issuance
+- printable return authorization
+- manual return-shipping/tracking workflow
+- customer-safe return tracking
+- package-identification label presentation
+- receiving, inspection, restock, and discard workflow
+- inventory-ledger restock integration
+- return resolution by original-payment refund
+- return resolution by store credit
+- replacement-resolution infrastructure
+- external-payment settlement snapshot repair for new orders
+- over-refund prevention
+- reconciliation of already-issued successful refunds
+- return lifecycle email notifications
+- Event Bridge email-outbox order/store/customer metadata propagation
+- status-aware return authorization presentation in email and public tracking
+- customer account/order timeline synchronization after return completion
+- privacy-safe failed return lookup behavior
 
-Business eligibility and quantity rules remain server-owned.
+Acceptance verified:
+
+- ineligible account order blocked before shipment/completion
+- authenticated account direct-return entry
+- cross-customer order-ID tampering rejected with `404 - Order not found`
+- requested quantities reduced by existing open returns
+- approval produced an RMA with expiration, address, and instructions
+- approved-state public tracking retained authorization and print controls
+- manual shipping label/tracking records rendered in Mission Control and storefront
+- in-transit and delivered shipment events rendered correctly
+- received merchandise recorded correctly
+- restocked quantity restored inventory exactly once
+- store-credit resolution completed and ledger balance updated
+- original-payment refund created a linked successful refund transaction
+- payment charge tracked cumulative refunded amount
+- partially-refunded order status updated correctly
+- duplicate/over-refund attempts blocked by remaining settled amount
+- an existing successful refund could be reconciled to a return without issuing a second refund
+- new checkout orders persist `external_payment_amount`
+- completed-return email reported correct resolution and refund
+- completed-return email no longer presents stale shipping instructions
+- approved RMA email queued and delivered successfully
+- completed public return tracking hides stale authorization/print actions
+- completed order timeline shows return completion and refund issuance
+- bad return-email credential returned a generic not-found response with no return data exposure
+
+Phase 4 closeout commits:
+
+```text
+6f396d2 Complete Phase 4 returns and refund workflow
+57ad103 Complete Phase 4 customer return communications and tracking
+```
 
 ## Phase 5 — Storefront Launch Audit
+
+Status: active / kickoff 2026-09-11
 
 Goals:
 
@@ -104,3 +154,12 @@ Goals:
 - payment/inventory/supplier-routing verification
 - return/RMA verification
 - production deployment checklist
+
+Planned milestones:
+
+- Phase 5A — documentation alignment + launch baseline
+- Phase 5B — complete storefront browser journey
+- Phase 5C — mobile/responsive + accessibility regression
+- Phase 5D — SEO, empty/error/loading states, and performance
+- Phase 5E — payments, inventory, supplier routing, notifications, and returns regression
+- Phase 5F — production deployment/readiness checklist

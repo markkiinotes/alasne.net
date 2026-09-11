@@ -1,5 +1,86 @@
 # Storefront Changelog
 
+## 2026-09-11 — Phase 4 acceptance closeout
+
+### Phase 4A — Return eligibility and request experience
+
+- added authenticated My Account direct-return entry
+- preserved the public order/email lookup path
+- enforced customer/store ownership before direct return access
+- preserved server-owned return eligibility rules
+- displayed purchased, already-requested, and remaining-returnable quantities
+- validated cross-customer order-ID tampering protection
+- validated quantity reduction after an existing return request
+
+### Phase 4B — Approval and RMA authorization
+
+- validated return approval workflow
+- issued RMA numbers and authorization-expiration timestamps
+- preserved return address and shipping-responsibility snapshots
+- validated printable return authorization
+- validated customer-safe public RMA presentation
+
+### Phase 4C — Return shipment and tracking
+
+- validated manual return-carrier/tracking fallback
+- validated package-identification label presentation
+- validated return shipment status events
+- validated in-transit and delivered customer tracking
+- preserved provider-label protection and live-carrier integration boundary
+
+### Phase 4D — Receiving, restocking, and resolution
+
+- validated return receiving and inspection
+- validated exact inventory restock and inventory-ledger movement
+- validated store-credit resolution
+- corrected external-payment settlement snapshot persistence for new checkouts
+- corrected refund authority to use successful payment charge records when older order snapshots are stale
+- validated original-payment refund creation
+- validated charge/refund parent transaction linkage
+- validated partial-refund accounting
+- validated over-refund protection
+- added reconciliation of existing successful refunds so the return workflow does not issue a duplicate refund
+- completed clean end-to-end original-payment return/refund acceptance
+
+### Phase 4E — Customer communications and final acceptance
+
+- validated completed-return email delivery
+- removed stale shipping instructions from received/completed return emails
+- propagated Event Bridge order/store/customer metadata into the email outbox
+- validated RMA approval queue delivery
+- made public return authorization status-aware
+- removed stale print/shipping actions after a return is received/completed
+- preserved approved-return authorization and print controls
+- validated My Account/order timeline synchronization
+- validated privacy-safe bad-credential return tracking
+
+### Security and correctness
+
+- return lookup remains email-bound
+- account return entry remains customer/store ownership-bound
+- customer-facing return views do not expose provider transaction IDs or Mission Control-only notes
+- duplicate refund attempts are rejected using remaining settled amount
+- successful external refunds remain linked to their original charge transaction
+
+### Phase 4 result
+
+```text
+PASS — STOREFRONT PHASE 4 COMPLETE
+```
+
+Closeout commits:
+
+```text
+6f396d2 Complete Phase 4 returns and refund workflow
+57ad103 Complete Phase 4 customer return communications and tracking
+```
+
+Next milestone:
+
+```text
+Phase 5 — Storefront Launch Audit
+```
+
 ## 2026-08-23 — Phase 3 acceptance closeout
 
 ### Browser acceptance completed
