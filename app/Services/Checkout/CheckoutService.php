@@ -1525,6 +1525,8 @@ class CheckoutService
                 payment_transaction_id =
                     :payment_transaction_id,
                 amount_paid = :amount_paid,
+                external_payment_amount =
+                    :external_payment_amount,
                 amount_refunded = 0.00,
                 paid_at = NOW(),
                 payment_failed_at = NULL,
@@ -1538,6 +1540,12 @@ class CheckoutService
                 $paymentTransactionId,
             'amount_paid' => number_format(
                 $amount,
+                2,
+                '.',
+                ''
+            ),
+            'external_payment_amount' => number_format(
+                max(0, $amount),
                 2,
                 '.',
                 ''

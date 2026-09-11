@@ -797,18 +797,129 @@ class StoreCreditRepository
             )
         );
 
-        $remainingExternal = max(
+        /*
+         * The successful charge transaction is the authoritative
+         * source for external tender. This lets legacy orders with
+         * an empty/stale external_payment_amount snapshot refund
+         * correctly without weakening the provider-refund checks.
+         */
+        $chargeStmt = $this->db->prepare("
+            SELECT
+                id,
+                amount,
+                refunded_amount,
+                currency
+            FROM payment_transactions
+            WHERE order_id = :order_id
+            AND type = 'charge'
+            AND status = 'succeeded'
+            ORDER BY id DESC
+            LIMIT 1
+            FOR UPDATE
+        ");
+
+        $chargeStmt->execute([
+            'order_id' => $orderId,
+        ]);
+
+        $charge = $chargeStmt->fetch();
+
+        $storedExternalAmount = max(
             0,
             round(
                 (float) $order[
                     'external_payment_amount'
-                ]
-                - (float) $order[
-                    'amount_refunded'
                 ],
                 2
             )
         );
+
+        $orderRefundedAmount = max(
+            0,
+            round(
+                (float) $order['amount_refunded'],
+                2
+            )
+        );
+
+        if ($charge) {
+            $settledExternalAmount = max(
+                0,
+                round((float) $charge['amount'], 2)
+            );
+
+            $chargeRefundedAmount = max(
+                0,
+                round(
+                    (float) $charge['refunded_amount'],
+                    2
+                )
+            );
+
+            /*
+             * Keep the stricter refund total when legacy snapshots
+             * disagree so a stale field can never increase the
+             * refundable balance.
+             */
+            $externalRefundedAmount = max(
+                $orderRefundedAmount,
+                $chargeRefundedAmount
+            );
+
+            $remainingExternal = max(
+                0,
+                round(
+                    $settledExternalAmount
+                    - $externalRefundedAmount,
+                    2
+                )
+            );
+
+            /*
+             * Self-heal legacy orders. New successful payments are
+             * written correctly by CheckoutService/PaymentService,
+             * but old rows can be repaired safely from the immutable
+             * succeeded charge ledger.
+             */
+            if (
+                abs(
+                    $storedExternalAmount
+                    - $settledExternalAmount
+                ) > 0.001
+            ) {
+                $repairStmt = $this->db->prepare("
+                    UPDATE orders
+                    SET
+                        external_payment_amount =
+                            :external_payment_amount,
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+
+                $repairStmt->execute([
+                    'id' => $orderId,
+                    'external_payment_amount' =>
+                        $this->money(
+                            $settledExternalAmount
+                        ),
+                ]);
+            }
+        } else {
+            /*
+             * Preserve the order snapshot only as a compatibility
+             * fallback. PaymentService still requires an actual
+             * succeeded charge before an external provider refund,
+             * so this does not bypass refund safety.
+             */
+            $remainingExternal = max(
+                0,
+                round(
+                    $storedExternalAmount
+                    - $orderRefundedAmount,
+                    2
+                )
+            );
+        }
 
         $remainingTotal = round(
             $remainingCredit + $remainingExternal,
@@ -831,6 +942,9 @@ class StoreCreditRepository
                 'remaining_external' => $remainingExternal,
                 'currency' =>
                     $order['currency'] ?? 'USD',
+                'store_id' => (int) $order['store_id'],
+                'customer_id' =>
+                    (int) $order['customer_id'],
             ];
         }
 
@@ -869,6 +983,12 @@ class StoreCreditRepository
             $creditRestore = round(
                 $creditRestore + $overflow,
                 2
+            );
+        }
+
+        if ($creditRestore > $remainingCredit + 0.001) {
+            throw new RuntimeException(
+                'Refund allocation exceeds the remaining redeemed store credit.'
             );
         }
 

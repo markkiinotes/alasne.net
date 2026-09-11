@@ -12,6 +12,20 @@ $escape = static fn (mixed $value): string =>
 $old = $old ?? [];
 $policy = $policy ?? [];
 $eligibility = $eligibility ?? null;
+$accountOrder = is_array(
+    $account_order ?? null
+)
+    ? $account_order
+    : null;
+$fromAccount = $accountOrder !== null;
+$accountOrderUrl = $fromAccount
+    ? '/store/'
+        . rawurlencode((string) $store['slug'])
+        . '/account/orders/'
+        . rawurlencode(
+            (string) ($accountOrder['id'] ?? '')
+        )
+    : null;
 
 $oldQuantities = is_array(
     $old['quantities'] ?? null
@@ -203,8 +217,14 @@ $oldQuantities = is_array(
         <h1>Request a Return</h1>
 
         <p>
-            Verify your paid order, then select the
-            merchandise you need to return.
+            <?php if ($fromAccount): ?>
+                Your secure account has already verified this order.
+                Review eligibility, then select the merchandise
+                you need to return.
+            <?php else: ?>
+                Verify your paid order, then select the
+                merchandise you need to return.
+            <?php endif; ?>
         </p>
     </section>
 
@@ -218,6 +238,117 @@ $oldQuantities = is_array(
     <?php endif; ?>
 
     <?php if (
+        empty($order)
+        && $fromAccount
+    ): ?>
+        <section class="customer-return-card">
+            <h2>Return Not Available for This Order</h2>
+
+            <div class="customer-return-order">
+                <article class="customer-return-stat">
+                    <span>Order</span>
+
+                    <strong>
+                        <?= $escape(
+                            $accountOrder['order_number']
+                            ?? $order_number
+                        ) ?>
+                    </strong>
+                </article>
+
+                <article class="customer-return-stat">
+                    <span>Order Status</span>
+
+                    <strong>
+                        <?= $escape(
+                            ucwords(
+                                str_replace(
+                                    '_',
+                                    ' ',
+                                    (string) (
+                                        $accountOrder['status']
+                                        ?? 'Unknown'
+                                    )
+                                )
+                            )
+                        ) ?>
+                    </strong>
+                </article>
+
+                <article class="customer-return-stat">
+                    <span>Payment</span>
+
+                    <strong>
+                        <?= $escape(
+                            ucwords(
+                                str_replace(
+                                    '_',
+                                    ' ',
+                                    (string) (
+                                        $accountOrder[
+                                            'payment_status'
+                                        ]
+                                        ?? 'Unknown'
+                                    )
+                                )
+                            )
+                        ) ?>
+                    </strong>
+                </article>
+
+                <article class="customer-return-stat">
+                    <span>Return Deadline</span>
+
+                    <strong>
+                        <?= $escape(
+                            $eligibility[
+                                'deadline_display'
+                            ]
+                            ?? '—'
+                        ) ?>
+                    </strong>
+                </article>
+            </div>
+
+            <p class="customer-return-note">
+                Your account remains signed in. You do not need
+                to look up this order again. Return eligibility
+                is determined by the store policy and the order’s
+                current fulfillment state.
+            </p>
+
+            <div class="customer-return-actions">
+                <?php if ($accountOrderUrl): ?>
+                    <a
+                        href="<?= $escape(
+                            $accountOrderUrl
+                        ) ?>"
+                        class="customer-return-secondary"
+                    >
+                        Back to Order
+                    </a>
+                <?php endif; ?>
+
+                <a
+                    href="/store/<?= $escape(
+                        $store['slug']
+                    ) ?>/returns/policy"
+                    class="customer-return-secondary"
+                >
+                    View Return Policy
+                </a>
+
+                <a
+                    href="/store/<?= $escape(
+                        $store['slug']
+                    ) ?>/returns/track"
+                    class="customer-return-secondary"
+                >
+                    Track Existing Return
+                </a>
+            </div>
+        </section>
+    <?php elseif (
         empty($order)
         && (int) (
             $policy['is_enabled'] ?? 0
@@ -666,14 +797,25 @@ $oldQuantities = is_array(
                     Submit Return Request
                 </button>
 
-                <a
-                    href="/store/<?= $escape(
-                        $store['slug']
-                    ) ?>/returns/request"
-                    class="customer-return-secondary"
-                >
-                    Start Over
-                </a>
+                <?php if ($accountOrderUrl): ?>
+                    <a
+                        href="<?= $escape(
+                            $accountOrderUrl
+                        ) ?>"
+                        class="customer-return-secondary"
+                    >
+                        Back to Order
+                    </a>
+                <?php else: ?>
+                    <a
+                        href="/store/<?= $escape(
+                            $store['slug']
+                        ) ?>/returns/request"
+                        class="customer-return-secondary"
+                    >
+                        Start Over
+                    </a>
+                <?php endif; ?>
             </div>
         </form>
     <?php endif; ?>

@@ -757,6 +757,48 @@ class ReturnRepository
     }
 
 
+    /**
+     * Find successful external refund transactions that have not yet
+     * been attached to any return and exactly match the requested
+     * return-refund amount. Returning every exact match lets the
+     * resolution service refuse ambiguous reconciliation safely.
+     */
+    public function unlinkedSuccessfulRefundsForOrder(
+        int $orderId,
+        float $amount
+    ): array {
+        $amount = round(max(0, $amount), 2);
+
+        if ($orderId <= 0 || $amount <= 0) {
+            return [];
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT
+                pt.*
+            FROM payment_transactions pt
+            WHERE pt.order_id = :order_id
+            AND pt.type = 'refund'
+            AND pt.status = 'succeeded'
+            AND ABS(pt.amount - :amount) < 0.005
+            AND NOT EXISTS (
+                SELECT 1
+                FROM returns linked_return
+                WHERE linked_return.refund_transaction_id = pt.id
+            )
+            ORDER BY pt.id DESC
+            FOR UPDATE
+        ");
+
+        $stmt->execute([
+            'order_id' => $orderId,
+            'amount' => $this->money($amount),
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
+
     public function markResolved(
         int $returnId,
         string $resolutionType,

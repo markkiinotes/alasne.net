@@ -62,7 +62,10 @@ class ReturnResolutionService
 
         $creditRestoreAmount = 0.0;
         $externalRefundAmount = $cashRefundAmount;
+        $externalRefundToProcess = $cashRefundAmount;
         $creditRestoration = null;
+        $reconciledRefundTransaction = null;
+        $refundTransaction = null;
 
         $this->db->beginTransaction();
 
@@ -212,37 +215,90 @@ class ReturnResolutionService
 
 
             if ($cashRefundAmount > 0) {
-                $refundAllocation =
-                    $this->storeCredits
-                        ->refundAllocationForOrder(
-                            (int) $return['order_id'],
-                            $cashRefundAmount
-                        );
-
-                $creditRestoreAmount = round(
-                    (float) $refundAllocation[
-                        'credit_restore_amount'
-                    ],
+                /*
+                 * A payment refund may already have been issued from the
+                 * order/payment screen before the return is completed.
+                 * For a pure external-payment order, reconcile one exact,
+                 * successful, unlinked refund instead of issuing a second
+                 * refund. Mixed-tender returns continue through the normal
+                 * tender-allocation path so redeemed store credit remains
+                 * protected.
+                 */
+                $remainingAppliedCredit = round(
+                    max(
+                        0,
+                        (float) (
+                            $return['store_credit_applied_amount']
+                            ?? 0
+                        )
+                        - (float) (
+                            $return['store_credit_restored_amount']
+                            ?? 0
+                        )
+                    ),
                     2
                 );
 
-                $externalRefundAmount = round(
-                    (float) $refundAllocation[
-                        'external_refund_amount'
-                    ],
-                    2
-                );
-
-                if ($creditRestoreAmount > 0) {
-                    $creditRestoration =
-                        $this->storeCredits
-                            ->restoreForReturnRefund(
+                if ($remainingAppliedCredit <= 0.001) {
+                    $matchingRefunds =
+                        $this->returns
+                            ->unlinkedSuccessfulRefundsForOrder(
                                 (int) $return['order_id'],
-                                $returnId,
-                                $creditRestoreAmount,
-                                'Restored redeemed store credit from return '
-                                . $return['return_number']
+                                $cashRefundAmount
                             );
+
+                    if (count($matchingRefunds) > 1) {
+                        throw new RuntimeException(
+                            'Multiple unlinked successful payment refunds match this return amount. Reconcile the payment transaction manually before completing the return.'
+                        );
+                    }
+
+                    if (count($matchingRefunds) === 1) {
+                        $reconciledRefundTransaction =
+                            $matchingRefunds[0];
+
+                        $externalRefundAmount =
+                            $cashRefundAmount;
+                        $externalRefundToProcess = 0.0;
+                    }
+                }
+
+                if (! is_array($reconciledRefundTransaction)) {
+                    $refundAllocation =
+                        $this->storeCredits
+                            ->refundAllocationForOrder(
+                                (int) $return['order_id'],
+                                $cashRefundAmount
+                            );
+
+                    $creditRestoreAmount = round(
+                        (float) $refundAllocation[
+                            'credit_restore_amount'
+                        ],
+                        2
+                    );
+
+                    $externalRefundAmount = round(
+                        (float) $refundAllocation[
+                            'external_refund_amount'
+                        ],
+                        2
+                    );
+
+                    $externalRefundToProcess =
+                        $externalRefundAmount;
+
+                    if ($creditRestoreAmount > 0) {
+                        $creditRestoration =
+                            $this->storeCredits
+                                ->restoreForReturnRefund(
+                                    (int) $return['order_id'],
+                                    $returnId,
+                                    $creditRestoreAmount,
+                                    'Restored redeemed store credit from return '
+                                    . $return['return_number']
+                                );
+                    }
                 }
             }
 
@@ -284,7 +340,7 @@ class ReturnResolutionService
                 );
 
             $resolutionStatus =
-                $externalRefundAmount > 0
+                $externalRefundToProcess > 0
                     ? 'pending_refund'
                     : 'completed';
 
@@ -302,7 +358,7 @@ class ReturnResolutionService
                 $storeCreditAmount,
                 $exchangeValue,
                 $exchangeOrderId,
-                $externalRefundAmount > 0
+                $externalRefundToProcess > 0
                     ? 'pending'
                     : (
                         $cashRefundAmount > 0
@@ -464,6 +520,65 @@ class ReturnResolutionService
                 );
             }
 
+            if (is_array($reconciledRefundTransaction)) {
+                $reconciledTransactionId = (int) (
+                    $reconciledRefundTransaction['id']
+                    ?? 0
+                );
+
+                $this->returns->attachRefundResult(
+                    $returnId,
+                    'succeeded',
+                    $reconciledTransactionId > 0
+                        ? $reconciledTransactionId
+                        : null,
+                    $externalRefundAmount,
+                    'Existing successful payment refund transaction #'
+                    . $reconciledTransactionId
+                    . ' was reconciled to this return.'
+                );
+
+                $this->returns->recordEvent(
+                    $returnId,
+                    'refund_reconciled',
+                    'Existing refund reconciled',
+                    '$'
+                    . number_format(
+                        $externalRefundAmount,
+                        2
+                    )
+                    . ' from successful payment refund transaction #'
+                    . $reconciledTransactionId
+                    . ' was linked to this return.',
+                    'unlinked',
+                    'succeeded'
+                );
+
+                $this->returns->recordOrderEvent(
+                    (int) $return['order_id'],
+                    'return_refund_reconciled',
+                    'Return refund reconciled',
+                    'Payment refund transaction #'
+                    . $reconciledTransactionId
+                    . ' was linked to return '
+                    . $return['return_number']
+                    . ' for $'
+                    . number_format(
+                        $externalRefundAmount,
+                        2
+                    )
+                    . '.',
+                    null,
+                    number_format(
+                        $externalRefundAmount,
+                        2,
+                        '.',
+                        ''
+                    ),
+                    true
+                );
+            }
+
             $this->returns->recordEvent(
                 $returnId,
                 'resolution_completed',
@@ -541,14 +656,17 @@ class ReturnResolutionService
             throw $exception;
         }
 
-        $refundTransaction = null;
+        if (is_array($reconciledRefundTransaction)) {
+            $refundTransaction =
+                $reconciledRefundTransaction;
+        }
 
-        if ($externalRefundAmount > 0) {
+        if ($externalRefundToProcess > 0) {
             try {
                 $refundTransaction =
                     $this->payments->refundOrder(
                         (int) $return['order_id'],
-                        $externalRefundAmount,
+                        $externalRefundToProcess,
                         [
                             'refund_scenario' =>
                                 $refundScenario,
@@ -575,7 +693,7 @@ class ReturnResolutionService
                         ? (int) $refundTransaction['id']
                         : null,
                     $succeeded
-                        ? $externalRefundAmount
+                        ? $externalRefundToProcess
                         : 0,
                     $succeeded
                         ? 'Payment refund completed.'
@@ -605,7 +723,7 @@ class ReturnResolutionService
                     $succeeded
                         ? '$'
                             . number_format(
-                                $externalRefundAmount,
+                                $externalRefundToProcess,
                                 2
                             )
                             . ' refunded to the original payment method.'
@@ -655,8 +773,9 @@ class ReturnResolutionService
 
         if (
             $cashRefundAmount > 0
-            && $externalRefundAmount <= 0
+            && $externalRefundToProcess <= 0
             && $creditRestoreAmount > 0
+            && ! is_array($reconciledRefundTransaction)
         ) {
             $this->returns->attachRefundResult(
                 $returnId,

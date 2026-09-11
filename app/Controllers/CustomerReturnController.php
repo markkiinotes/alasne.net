@@ -47,16 +47,189 @@ class CustomerReturnController extends Controller
             (int) $store['id']
         );
 
+        $accountOrderId = (int) $this->request->input(
+            'order_id',
+            0
+        );
+
+        if ($accountOrderId <= 0) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                '',
+                '',
+                null
+            );
+        }
+
+        $portalSession = $this->customerPortalSessionForStore(
+            (string) $store['slug']
+        );
+
+        if (! $portalSession) {
+            $_SESSION['customer_account_error'] =
+                'Your secure account session expired. Sign in again to request a return.';
+
+            $this->response->redirect(
+                '/store/'
+                . rawurlencode((string) $store['slug'])
+                . '/account'
+            );
+
+            return null;
+        }
+
+        $order = $this->returns->orderForReturn(
+            $accountOrderId
+        );
+
+        if (
+            ! $order
+            || (int) ($order['store_id'] ?? 0)
+                !== (int) $store['id']
+            || (int) ($order['customer_id'] ?? 0)
+                !== (int) ($portalSession['customer_id'] ?? 0)
+        ) {
+            http_response_code(404);
+
+            return '404 - Order not found';
+        }
+
+        $customerEmail = strtolower(
+            trim(
+                (string) (
+                    $order['customer_email']
+                    ?? ''
+                )
+            )
+        );
+
+        $orderNumber = (string) (
+            $order['order_number']
+            ?? ''
+        );
+
+        if ((int) $policy['is_enabled'] !== 1) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'This store is not currently accepting customer return requests.',
+                [],
+                $order
+            );
+        }
+
+        if (
+            (float) (
+                $order['verified_amount_paid']
+                ?? $order['amount_paid']
+                ?? 0
+            ) <= 0
+        ) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'This order is not eligible for a return because no completed payment was found.',
+                [],
+                $order
+            );
+        }
+
+        $eligibility =
+            $this->policies->customerEligibility(
+                $order
+            );
+
+        if (! $eligibility['eligible']) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                $orderNumber,
+                $customerEmail,
+                (string) $eligibility['message'],
+                [],
+                $order
+            );
+        }
+
+        $items =
+            $this->returns->availableItemsForOrder(
+                (int) $order['id']
+            );
+
+        $hasReturnableItems = false;
+
+        foreach ($items as $item) {
+            if (
+                (int) (
+                    $item[
+                        'quantity_available_to_return'
+                    ]
+                    ?? 0
+                ) > 0
+            ) {
+                $hasReturnableItems = true;
+                break;
+            }
+        }
+
+        if (! $hasReturnableItems) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                $orderNumber,
+                $customerEmail,
+                'No items from this order remain available for return.',
+                [],
+                $order
+            );
+        }
+
+        $accessToken = $this->createAccessToken(
+            $store,
+            $order,
+            $customerEmail,
+            (int) $order['id']
+        );
+
+        $this->csrf->regenerate();
+
         return $this->renderRequestPage(
             $store,
             $policy,
+            $order,
+            $items,
+            $accessToken,
+            $eligibility,
+            $orderNumber,
+            $customerEmail,
             null,
             [],
-            null,
-            null,
-            '',
-            '',
-            null
+            $order
         );
     }
 
@@ -233,19 +406,11 @@ class CustomerReturnController extends Controller
             );
         }
 
-        $this->cleanupSessionTokens();
-        $accessToken = bin2hex(random_bytes(32));
-
-        $_SESSION['customer_return_access'][
-            $accessToken
-        ] = [
-            'store_slug' => (string) $store['slug'],
-            'order_number' =>
-                (string) $order['order_number'],
-            'customer_email' => $customerEmail,
-            'expires_at' =>
-                time() + self::ACCESS_TTL_SECONDS,
-        ];
+        $accessToken = $this->createAccessToken(
+            $store,
+            $order,
+            $customerEmail
+        );
 
         $this->csrf->regenerate();
 
@@ -403,7 +568,12 @@ class CustomerReturnController extends Controller
                 $eligibility,
                 (string) $order['order_number'],
                 (string) $access['customer_email'],
-                (string) $eligibility['message']
+                (string) $eligibility['message'],
+                [],
+                $this->accountOrderFromAccess(
+                    $access,
+                    $order
+                )
             );
         }
 
@@ -549,7 +719,11 @@ class CustomerReturnController extends Controller
                     'reason_code' => $reasonCode,
                     'reason_details' => $reasonDetails,
                     'customer_notes' => $customerNotes,
-                ]
+                ],
+                $this->accountOrderFromAccess(
+                    $access,
+                    $order
+                )
             );
         }
     }
@@ -637,7 +811,8 @@ class CustomerReturnController extends Controller
         string $orderNumber,
         string $customerEmail,
         ?string $error,
-        array $old = []
+        array $old = [],
+        ?array $accountOrder = null
     ) {
         return $this->view(
             'storefront.customer-return-request',
@@ -653,6 +828,7 @@ class CustomerReturnController extends Controller
                 'eligibility' => $eligibility,
                 'order_number' => $orderNumber,
                 'customer_email' => $customerEmail,
+                'account_order' => $accountOrder,
                 'csrf_token' =>
                     $this->csrf->token(),
                 'error' => $error,
@@ -660,6 +836,90 @@ class CustomerReturnController extends Controller
             ],
             'storefront'
         );
+    }
+
+    private function createAccessToken(
+        array $store,
+        array $order,
+        string $customerEmail,
+        ?int $accountOrderId = null
+    ): string {
+        $this->cleanupSessionTokens();
+
+        $accessToken = bin2hex(
+            random_bytes(32)
+        );
+
+        $_SESSION['customer_return_access'][
+            $accessToken
+        ] = [
+            'store_slug' => (string) $store['slug'],
+            'order_number' =>
+                (string) $order['order_number'],
+            'customer_email' => $customerEmail,
+            'account_order_id' =>
+                $accountOrderId,
+            'expires_at' =>
+                time() + self::ACCESS_TTL_SECONDS,
+        ];
+
+        return $accessToken;
+    }
+
+    private function customerPortalSessionForStore(
+        string $storeSlug
+    ): ?array {
+        $session =
+            $_SESSION['customer_portal_access'][
+                $storeSlug
+            ]
+            ?? null;
+
+        if (! is_array($session)) {
+            return null;
+        }
+
+        if (
+            (int) ($session['expires'] ?? 0)
+            < time()
+        ) {
+            unset(
+                $_SESSION['customer_portal_access'][
+                    $storeSlug
+                ]
+            );
+
+            return null;
+        }
+
+        if (
+            (int) ($session['customer_id'] ?? 0)
+            <= 0
+        ) {
+            return null;
+        }
+
+        return $session;
+    }
+
+    private function accountOrderFromAccess(
+        array $access,
+        array $order
+    ): ?array {
+        $accountOrderId = (int) (
+            $access['account_order_id']
+            ?? 0
+        );
+
+        if (
+            $accountOrderId <= 0
+            || $accountOrderId
+                !== (int) ($order['id'] ?? 0)
+        ) {
+            return null;
+        }
+
+        return $order;
     }
 
     private function storeFromRequest(

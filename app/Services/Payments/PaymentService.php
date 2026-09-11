@@ -568,6 +568,8 @@ class PaymentService
                     pt.id,
                 o.currency = pt.currency,
                 o.amount_paid = pt.amount,
+                o.external_payment_amount =
+                    pt.amount,
                 o.paid_at =
                     COALESCE(
                         o.paid_at,
@@ -598,6 +600,7 @@ class PaymentService
                 o.payment_status,
                 o.payment_transaction_id,
                 o.amount_paid,
+                o.external_payment_amount,
                 pt.amount AS transaction_amount
             FROM orders o
             INNER JOIN payment_transactions pt
@@ -637,6 +640,21 @@ class PaymentService
                     $paymentState[
                         'transaction_amount'
                     ] ?? -2
+                ),
+                2
+            )
+            || round(
+                (float) (
+                    $paymentState[
+                        'external_payment_amount'
+                    ] ?? -3
+                ),
+                2
+            ) !== round(
+                (float) (
+                    $paymentState[
+                        'transaction_amount'
+                    ] ?? -4
                 ),
                 2
             )
