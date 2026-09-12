@@ -10,6 +10,7 @@ use App\Repositories\PaymentMethodRepository;
 use App\Repositories\ShippingMethodRepository;
 use App\Repositories\StoreRepository;
 use App\Repositories\StoreCreditRepository;
+use App\Repositories\TaxRuleRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Checkout\CheckoutPaymentFailedException;
 use App\Services\Checkout\CheckoutService;
@@ -24,6 +25,7 @@ class CheckoutController extends Controller
         private ShippingMethodRepository $shippingMethods,
         private PaymentMethodRepository $paymentMethods,
         private StoreCreditRepository $storeCredits,
+        private TaxRuleRepository $taxRules,
         private CheckoutService $checkout,
         private CsrfService $csrf
     ) {
@@ -81,13 +83,45 @@ class CheckoutController extends Controller
                 (int) $store['id']
             );
 
+        /*
+         * Keep checkout values in session until checkout succeeds.
+         * This supports the required review step without making the
+         * customer re-enter the shipping address after tax is quoted.
+         */
         $old = $_SESSION['checkout_old'] ?? [];
         $error = $_SESSION['checkout_error'] ?? null;
+        $quote = $_SESSION['checkout_quote'] ?? null;
 
-        unset(
-            $_SESSION['checkout_old'],
-            $_SESSION['checkout_error']
-        );
+        unset($_SESSION['checkout_error']);
+
+        /*
+         * A reviewed quote is valid only while the cart, destination,
+         * and selected shipping method still match. If anything has
+         * changed, hide the old quote and require another review.
+         */
+        if (is_array($quote) && ! empty($old)) {
+            try {
+                $currentQuote = $this->buildCheckoutQuote(
+                    $store,
+                    $cart,
+                    $old
+                );
+
+                if (! $this->quotesMatch(
+                    $quote,
+                    $currentQuote
+                )) {
+                    unset($_SESSION['checkout_quote']);
+                    $quote = null;
+                }
+            } catch (\Throwable $exception) {
+                unset($_SESSION['checkout_quote']);
+                $quote = null;
+            }
+        } elseif (! empty($quote)) {
+            unset($_SESSION['checkout_quote']);
+            $quote = null;
+        }
 
         $storeCredit = ! empty($old['email'])
             && ! empty($old['postal_code'])
@@ -108,10 +142,12 @@ class CheckoutController extends Controller
             'title' => 'Checkout | ' . $store['name'],
             'store' => $store,
             'cartItems' => $cartItems,
+            'cartQuantity' => array_sum($cart),
             'subtotal' => $this->subtotal($cartItems),
             'shippingMethods' => $shippingMethods,
             'paymentMethods' => $paymentMethods,
             'storeCredit' => $storeCredit,
+            'quote' => $quote,
             'csrf_token' => $this->csrf->token(),
             'old' => $old,
             'error' => $error,
@@ -165,10 +201,72 @@ class CheckoutController extends Controller
         $customerData = $this->checkoutInput();
         $_SESSION['checkout_old'] = $customerData;
 
+        $checkoutAction = strtolower(
+            trim(
+                (string) $this->request->input(
+                    'checkout_action',
+                    'review'
+                )
+            )
+        );
+
         try {
             $this->validateCheckoutInput(
                 $customerData
             );
+
+            $currentQuote = $this->buildCheckoutQuote(
+                $store,
+                $cart,
+                $customerData
+            );
+
+            /*
+             * First submit is review-only. It calculates the same
+             * server-owned shipping/tax totals used by checkout and
+             * returns the customer to the checkout page without
+             * creating an order or charging a payment method.
+             */
+            if ($checkoutAction === 'review') {
+                $_SESSION['checkout_quote'] = $currentQuote;
+
+                $this->response->redirect($checkoutUrl);
+
+                return;
+            }
+
+            if ($checkoutAction !== 'pay') {
+                throw new RuntimeException(
+                    'Invalid checkout action.'
+                );
+            }
+
+            $reviewedQuote =
+                $_SESSION['checkout_quote'] ?? null;
+
+            /*
+             * Never charge from an unreviewed or stale total.
+             * Recalculate from the current cart/destination and
+             * require another review if anything changed.
+             */
+            if (
+                ! is_array($reviewedQuote)
+                || ! $this->quotesMatch(
+                    $reviewedQuote,
+                    $currentQuote
+                )
+            ) {
+                $_SESSION['checkout_quote'] =
+                    $currentQuote;
+
+                $_SESSION['checkout_error'] =
+                    'Your shipping, tax, or final total changed. '
+                    . 'Review the updated total before payment.';
+
+                $this->response->redirect($checkoutUrl);
+
+                return;
+            }
 
             $orderId =
                 $this->checkout->createPendingOrder(
@@ -198,7 +296,10 @@ class CheckoutController extends Controller
             $this->clearCart($cartState);
             $this->csrf->regenerate();
 
-            unset($_SESSION['checkout_old']);
+            unset(
+                $_SESSION['checkout_old'],
+                $_SESSION['checkout_quote']
+            );
 
             $_SESSION['checkout_order_id'] =
                 $orderId;
@@ -385,6 +486,189 @@ class CheckoutController extends Controller
         }
 
         return $this->stores->findBySlug($slug);
+    }
+
+    private function buildCheckoutQuote(
+        array $store,
+        array $cart,
+        array $customerData
+    ): array {
+        $storeId = (int) $store['id'];
+
+        $cartItems = $this->cartProducts(
+            $storeId,
+            $cart
+        );
+
+        if (empty($cartItems)) {
+            throw new RuntimeException(
+                'Your cart no longer contains available products.'
+            );
+        }
+
+        $subtotal = $this->subtotal($cartItems);
+
+        $shippingMethod =
+            $this->shippingMethods->findActiveForStore(
+                (int) (
+                    $customerData[
+                        'shipping_method_id'
+                    ] ?? 0
+                ),
+                $storeId
+            );
+
+        if (! $shippingMethod) {
+            throw new RuntimeException(
+                'Select an active shipping method.'
+            );
+        }
+
+        $shippingTotal = round(
+            (float) $shippingMethod['price'],
+            2
+        );
+
+        /*
+         * Use the exact same tax repository used by CheckoutService
+         * so the customer reviews the same destination rule that
+         * checkout will calculate again before the payment charge.
+         */
+        $taxSnapshot =
+            $this->taxRules->calculateForDestination(
+                $storeId,
+                $subtotal,
+                $shippingTotal,
+                $customerData
+            );
+
+        $taxTotal = round(
+            (float) (
+                $taxSnapshot['tax_total'] ?? 0
+            ),
+            2
+        );
+
+        $grandTotal = round(
+            $subtotal
+            + $shippingTotal
+            + $taxTotal,
+            2
+        );
+
+        $normalizedCart = [];
+
+        foreach ($cart as $productId => $quantity) {
+            $productId = (int) $productId;
+            $quantity = (int) $quantity;
+
+            if ($productId > 0 && $quantity > 0) {
+                $normalizedCart[$productId] = $quantity;
+            }
+        }
+
+        ksort($normalizedCart);
+
+        $fingerprintData = [
+            'store_id' => $storeId,
+            'cart' => $normalizedCart,
+            'shipping_method_id' =>
+                (int) $shippingMethod['id'],
+            'country' => strtoupper(
+                trim(
+                    (string) (
+                        $customerData['country'] ?? ''
+                    )
+                )
+            ),
+            'state' => strtoupper(
+                trim(
+                    (string) (
+                        $customerData['state'] ?? ''
+                    )
+                )
+            ),
+            'postal_code' => strtoupper(
+                trim(
+                    (string) (
+                        $customerData[
+                            'postal_code'
+                        ] ?? ''
+                    )
+                )
+            ),
+            'subtotal' => number_format(
+                $subtotal,
+                2,
+                '.',
+                ''
+            ),
+            'shipping_total' => number_format(
+                $shippingTotal,
+                2,
+                '.',
+                ''
+            ),
+            'tax_total' => number_format(
+                $taxTotal,
+                2,
+                '.',
+                ''
+            ),
+            'grand_total' => number_format(
+                $grandTotal,
+                2,
+                '.',
+                ''
+            ),
+        ];
+
+        return [
+            'subtotal' => $subtotal,
+            'shipping_total' => $shippingTotal,
+            'shipping_method_id' =>
+                (int) $shippingMethod['id'],
+            'shipping_method_name' =>
+                (string) $shippingMethod['name'],
+            'tax_total' => $taxTotal,
+            'tax_rate' => (float) (
+                $taxSnapshot['tax_rate'] ?? 0
+            ),
+            'tax_rule_name' =>
+                $taxSnapshot['tax_rule_name']
+                ?? null,
+            'tax_shipping' => (int) (
+                $taxSnapshot['tax_shipping'] ?? 0
+            ),
+            'grand_total' => $grandTotal,
+            'fingerprint' => hash(
+                'sha256',
+                json_encode(
+                    $fingerprintData,
+                    JSON_UNESCAPED_SLASHES
+                ) ?: ''
+            ),
+        ];
+    }
+
+    private function quotesMatch(
+        array $reviewed,
+        array $current
+    ): bool {
+        $reviewedFingerprint = (string) (
+            $reviewed['fingerprint'] ?? ''
+        );
+
+        $currentFingerprint = (string) (
+            $current['fingerprint'] ?? ''
+        );
+
+        return $reviewedFingerprint !== ''
+            && $currentFingerprint !== ''
+            && hash_equals(
+                $reviewedFingerprint,
+                $currentFingerprint
+            );
     }
 
     private function checkoutInput(): array

@@ -25,6 +25,24 @@ $receiptQuery = http_build_query([
     'order_number' => $order['order_number'] ?? '',
     'email' => $customer['email'] ?? '',
 ]);
+
+$orderStatus = strtolower(
+    trim((string) ($order['status'] ?? ''))
+);
+
+$orderId = (int) ($order['id'] ?? 0);
+
+$canRequestReturn =
+    $orderId > 0
+    && in_array(
+        $orderStatus,
+        ['shipped', 'completed'],
+        true
+    );
+
+$returnQuery = http_build_query([
+    'order_id' => $orderId,
+]);
 ?>
 
 <main class="account-page">
@@ -71,12 +89,14 @@ $receiptQuery = http_build_query([
                 Print Receipt
             </a>
 
-            <a
-                href="/store/<?= $escape($store['slug']) ?>/returns/request"
-                class="account-primary-button"
-            >
-                Request Return
-            </a>
+            <?php if ($canRequestReturn): ?>
+                <a
+                    href="/store/<?= $escape($store['slug']) ?>/returns/request?<?= $escape($returnQuery) ?>"
+                    class="account-primary-button"
+                >
+                    Request Return
+                </a>
+            <?php endif; ?>
         </div>
     </section>
 

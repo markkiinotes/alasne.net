@@ -330,7 +330,16 @@
 
             <div class="summary-row total">
                 <span>Total</span>
-                <strong>$<?= number_format((float) ($order['total'] ?? 0), 2) ?></strong>
+                <strong>
+                    $<?= number_format(
+                        (float) (
+                            $order['grand_total']
+                            ?? $order['amount_paid']
+                            ?? 0
+                        ),
+                        2
+                    ) ?>
+                </strong>
             </div>
         </div>
     </section>

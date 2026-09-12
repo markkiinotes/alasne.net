@@ -170,18 +170,6 @@ $customerName = trim(
                 </tr>
 
                 <tr>
-                    <th>Transaction</th>
-
-                    <td>
-                        #<?= $escape(
-                            $order[
-                                'payment_transaction_id'
-                            ] ?? '—'
-                        ) ?>
-                    </td>
-                </tr>
-
-                <tr>
                     <th>Subtotal</th>
 
                     <td>

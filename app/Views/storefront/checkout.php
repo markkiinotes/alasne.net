@@ -14,6 +14,9 @@ $old = $old ?? [];
 $cartItems = $cartItems ?? [];
 $shippingMethods = $shippingMethods ?? [];
 $paymentMethods = $paymentMethods ?? [];
+$quote = is_array($quote ?? null)
+    ? $quote
+    : null;
 
 $selectedShippingMethodId = (int) (
     $old['shipping_method_id']
@@ -31,8 +34,45 @@ $selectedScenario = strtolower(
         ?? 'approved'
     )
 );
-?>
 
+$selectedShippingPrice = 0.0;
+
+foreach ($shippingMethods as $method) {
+    if (
+        (int) ($method['id'] ?? 0)
+        === $selectedShippingMethodId
+    ) {
+        $selectedShippingPrice = round(
+            (float) ($method['price'] ?? 0),
+            2
+        );
+
+        break;
+    }
+}
+
+$quoteReady = $quote !== null
+    && ! empty($quote['fingerprint']);
+
+$displayShipping = $quoteReady
+    ? (float) ($quote['shipping_total'] ?? 0)
+    : $selectedShippingPrice;
+
+$displayTax = $quoteReady
+    ? (float) ($quote['tax_total'] ?? 0)
+    : null;
+
+$displayGrandTotal = $quoteReady
+    ? (float) ($quote['grand_total'] ?? 0)
+    : round(
+        (float) $subtotal + $displayShipping,
+        2
+    );
+
+$taxRate = $quoteReady
+    ? (float) ($quote['tax_rate'] ?? 0)
+    : 0.0;
+?>
 
 <section class="storefront-product-header">
     <div class="storefront-container storefront-topbar">
@@ -88,8 +128,9 @@ $selectedScenario = strtolower(
         <h1>Complete Your Order</h1>
 
         <p>
-            Shipping, tax, and payment are verified on the
-            server before the order is completed.
+            Review shipping, tax, and the final total before
+            payment. The server verifies the amounts again when
+            the order is placed.
         </p>
     </div>
 
@@ -107,6 +148,7 @@ $selectedScenario = strtolower(
             <form
                 method="POST"
                 action="/store/<?= $escape($store['slug']) ?>/checkout"
+                id="checkout-form"
             >
                 <input
                     type="hidden"
@@ -601,9 +643,10 @@ $selectedScenario = strtolower(
                     <strong>Server-verified checkout</strong>
 
                     <span>
-                        The final tax and total are recalculated
-                        on the server. Only an approved payment
-                        reduces inventory and completes the order.
+                        Tax is calculated from the shipping
+                        destination before payment. The server
+                        recalculates the final amount again when
+                        the order is placed.
                     </span>
                 </div>
 
@@ -611,13 +654,16 @@ $selectedScenario = strtolower(
                     id="checkout-submit-note"
                     class="checkout-submit-note"
                 >
-                    Review your information before placing the
-                    order. If a development payment is declined,
-                    the cart remains available for another attempt.
+                    Review the tax and final total before payment.
+                    If the destination or shipping method changes,
+                    the total must be reviewed again.
                 </p>
 
                 <button
                     type="submit"
+                    name="checkout_action"
+                    value="review"
+                    id="checkout-review-button"
                     class="storefront-cart-button"
                     aria-describedby="checkout-submit-note"
                     <?= (
@@ -626,6 +672,19 @@ $selectedScenario = strtolower(
                     )
                         ? 'disabled'
                         : '' ?>
+                    <?= $quoteReady ? 'hidden' : '' ?>
+                >
+                    Review Tax &amp; Final Total
+                </button>
+
+                <button
+                    type="submit"
+                    name="checkout_action"
+                    value="pay"
+                    id="checkout-pay-button"
+                    class="storefront-cart-button"
+                    aria-describedby="checkout-submit-note"
+                    <?= $quoteReady ? '' : 'hidden disabled' ?>
                 >
                     Pay &amp; Place Order
                 </button>
@@ -692,38 +751,89 @@ $selectedScenario = strtolower(
                     <th>Shipping</th>
 
                     <td id="checkout-shipping-total">
-                        $0.00
+                        $<?= number_format(
+                            $displayShipping,
+                            2
+                        ) ?>
                     </td>
                 </tr>
 
                 <tr>
-                    <th>Tax</th>
+                    <th id="checkout-tax-label">
+                        <?php if (
+                            $quoteReady
+                            && $taxRate > 0
+                        ): ?>
+                            Tax
+                            (<?= $escape(
+                                rtrim(
+                                    rtrim(
+                                        number_format(
+                                            $taxRate,
+                                            5,
+                                            '.',
+                                            ''
+                                        ),
+                                        '0'
+                                    ),
+                                    '.'
+                                )
+                            ) ?>%)
+                        <?php else: ?>
+                            Tax
+                        <?php endif; ?>
+                    </th>
 
-                    <td class="checkout-summary-status">
-                        Calculated securely
+                    <td
+                        id="checkout-tax-total"
+                        class="checkout-summary-status"
+                    >
+                        <?php if ($quoteReady): ?>
+                            $<?= number_format(
+                                (float) $displayTax,
+                                2
+                            ) ?>
+                        <?php else: ?>
+                            Review required
+                        <?php endif; ?>
                     </td>
                 </tr>
 
                 <tr class="summary-total">
-                    <th>Estimated Before Tax</th>
+                    <th id="checkout-total-label">
+                        <?= $quoteReady
+                            ? 'Total Due'
+                            : 'Estimated Before Tax' ?>
+                    </th>
 
                     <td id="checkout-estimated-total">
                         $<?= number_format(
-                            (float) $subtotal,
+                            $displayGrandTotal,
                             2
                         ) ?>
                     </td>
                 </tr>
             </table>
 
-            <p class="checkout-note">
-                The server applies the matching destination
-                tax rule and charges the resulting final total.
+            <p
+                class="checkout-note"
+                id="checkout-tax-note"
+            >
+                <?php if ($quoteReady): ?>
+                    Tax and final total were calculated on the
+                    server for the entered destination. Review
+                    them before selecting Pay &amp; Place Order.
+                <?php else: ?>
+                    Enter the shipping destination, choose a
+                    shipping method, then select Review Tax &amp;
+                    Final Total before payment.
+                <?php endif; ?>
             </p>
 
             <ul class="checkout-trust-list">
-                <li>Final total is calculated on the server.</li>
-                <li>Inventory changes only after approval.</li>
+                <li>Tax is shown before payment.</li>
+                <li>The final total is verified again on the server.</li>
+                <li>Inventory changes only after payment approval.</li>
                 <li>Declined test payments keep the cart available.</li>
             </ul>
         </aside>
@@ -743,12 +853,85 @@ document.addEventListener('DOMContentLoaded', () => {
         ) ?>
     );
 
+    let quoteCurrent = <?= $quoteReady
+        ? 'true'
+        : 'false' ?>;
+
+    const quotedShipping = Number(
+        <?= json_encode(
+            number_format(
+                $quoteReady
+                    ? (float) (
+                        $quote['shipping_total'] ?? 0
+                    )
+                    : 0,
+                2,
+                '.',
+                ''
+            )
+        ) ?>
+    );
+
+    const quotedTax = Number(
+        <?= json_encode(
+            number_format(
+                $quoteReady
+                    ? (float) (
+                        $quote['tax_total'] ?? 0
+                    )
+                    : 0,
+                2,
+                '.',
+                ''
+            )
+        ) ?>
+    );
+
+    const quotedGrandTotal = Number(
+        <?= json_encode(
+            number_format(
+                $quoteReady
+                    ? (float) (
+                        $quote['grand_total'] ?? 0
+                    )
+                    : 0,
+                2,
+                '.',
+                ''
+            )
+        ) ?>
+    );
+
     const shippingOutput = document.getElementById(
         'checkout-shipping-total'
     );
 
+    const taxOutput = document.getElementById(
+        'checkout-tax-total'
+    );
+
+    const taxLabel = document.getElementById(
+        'checkout-tax-label'
+    );
+
+    const totalLabel = document.getElementById(
+        'checkout-total-label'
+    );
+
     const estimatedOutput = document.getElementById(
         'checkout-estimated-total'
+    );
+
+    const taxNote = document.getElementById(
+        'checkout-tax-note'
+    );
+
+    const reviewButton = document.getElementById(
+        'checkout-review-button'
+    );
+
+    const payButton = document.getElementById(
+        'checkout-pay-button'
     );
 
     const shippingInputs = document.querySelectorAll(
@@ -758,6 +941,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const paymentInputs = document.querySelectorAll(
         'input[name="payment_method_id"]'
     );
+
+    const taxAddressInputs = [
+        document.getElementById('state'),
+        document.getElementById('postal_code'),
+        document.getElementById('country')
+    ].filter(Boolean);
 
     const testPanel = document.getElementById(
         'test-payment-panel'
@@ -773,24 +962,72 @@ document.addEventListener('DOMContentLoaded', () => {
         ).format(amount)
     );
 
-    const updateShipping = () => {
+    const selectedShipping = () => {
         const selected = document.querySelector(
             'input[name="shipping_method_id"]:checked'
         );
 
-        const shipping = selected
+        return selected
             ? Number(selected.dataset.price || 0)
             : 0;
+    };
+
+    const showUnreviewedTotal = () => {
+        const shipping = selectedShipping();
 
         if (shippingOutput) {
             shippingOutput.textContent =
                 money(shipping);
         }
 
+        if (taxOutput) {
+            taxOutput.textContent =
+                'Review required';
+        }
+
+        if (taxLabel) {
+            taxLabel.textContent = 'Tax';
+        }
+
+        if (totalLabel) {
+            totalLabel.textContent =
+                'Estimated Before Tax';
+        }
+
         if (estimatedOutput) {
             estimatedOutput.textContent =
                 money(subtotal + shipping);
         }
+
+        if (taxNote) {
+            taxNote.textContent =
+                'Shipping or destination information changed. '
+                + 'Review tax and the final total again before payment.';
+        }
+
+        if (reviewButton) {
+            reviewButton.hidden = false;
+            reviewButton.disabled =
+                <?= (
+                    empty($shippingMethods)
+                    || empty($paymentMethods)
+                )
+                    ? 'true'
+                    : 'false' ?>;
+        }
+
+        if (payButton) {
+            payButton.disabled = true;
+            payButton.hidden = true;
+        }
+    };
+
+    const markQuoteStale = () => {
+        if (quoteCurrent) {
+            quoteCurrent = false;
+        }
+
+        showUnreviewedTotal();
     };
 
     const updatePaymentPanel = () => {
@@ -809,7 +1046,19 @@ document.addEventListener('DOMContentLoaded', () => {
     shippingInputs.forEach((input) => {
         input.addEventListener(
             'change',
-            updateShipping
+            markQuoteStale
+        );
+    });
+
+    taxAddressInputs.forEach((input) => {
+        input.addEventListener(
+            'input',
+            markQuoteStale
+        );
+
+        input.addEventListener(
+            'change',
+            markQuoteStale
         );
     });
 
@@ -820,7 +1069,38 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     });
 
-    updateShipping();
+    if (quoteCurrent) {
+        if (reviewButton) {
+            reviewButton.hidden = true;
+        }
+
+        if (payButton) {
+            payButton.hidden = false;
+            payButton.disabled = false;
+        }
+
+        if (shippingOutput) {
+            shippingOutput.textContent =
+                money(quotedShipping);
+        }
+
+        if (taxOutput) {
+            taxOutput.textContent =
+                money(quotedTax);
+        }
+
+        if (totalLabel) {
+            totalLabel.textContent = 'Total Due';
+        }
+
+        if (estimatedOutput) {
+            estimatedOutput.textContent =
+                money(quotedGrandTotal);
+        }
+    } else {
+        showUnreviewedTotal();
+    }
+
     updatePaymentPanel();
 });
 </script>

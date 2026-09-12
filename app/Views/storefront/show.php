@@ -91,13 +91,3 @@
     </section>
 
 </main>
-
-<footer class="storefront-footer">
-    <div class="storefront-container">
-        <p>
-            &copy; <?= date('Y') ?>
-            <?= htmlspecialchars($store['name']) ?>.
-            Powered by Alasne.
-        </p>
-    </div>
-</footer>

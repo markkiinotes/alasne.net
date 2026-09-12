@@ -120,7 +120,7 @@
         </table>
     </section>
 </div>
-
+<br />
 <section class="panel">
     <div class="table-header">
         <h2>Recent Orders</h2>
@@ -166,7 +166,7 @@
         </tbody>
     </table>
 </section>
-
+<br />
 <div class="form-actions">
 	<a
 		href="/store/<?= htmlspecialchars($store['slug']) ?>"
