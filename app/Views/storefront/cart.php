@@ -172,23 +172,13 @@
                 </table>
 
                 <a
-					href="/store/<?= htmlspecialchars($store['slug']) ?>/checkout"
-					class="storefront-cart-button full-width-button checkout-link-button"
-				>
-					Proceed to Checkout
-				</a>
+                    href="/store/<?= htmlspecialchars($store['slug']) ?>/checkout"
+                    class="storefront-cart-button full-width-button checkout-link-button"
+                >
+                    Proceed to Checkout
+                </a>
             </aside>
         </section>
     <?php endif; ?>
 
 </main>
-
-<footer class="storefront-footer">
-    <div class="storefront-container">
-        <p>
-            &copy; <?= date('Y') ?>
-            <?= htmlspecialchars($store['name']) ?>.
-            Powered by Alasne.
-        </p>
-    </div>
-</footer>

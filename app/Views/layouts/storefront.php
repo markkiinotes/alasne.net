@@ -10,6 +10,66 @@ $escape = static function (mixed $value): string {
     );
 };
 
+$absoluteUrl = static function (mixed $value): string {
+    $url = trim((string) $value);
+
+    if ($url === '') {
+        return '';
+    }
+
+    if (preg_match('#^https?://#i', $url) === 1) {
+        return $url;
+    }
+
+    if (! str_starts_with($url, '/')) {
+        return '';
+    }
+
+    $forwardedProto = trim(
+        explode(
+            ',',
+            (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')
+        )[0]
+    );
+
+    if (in_array(strtolower($forwardedProto), ['http', 'https'], true)) {
+        $scheme = strtolower($forwardedProto);
+    } else {
+        $https = strtolower(
+            trim(
+                (string) ($_SERVER['HTTPS'] ?? '')
+            )
+        );
+
+        $scheme = ($https !== '' && $https !== 'off')
+            ? 'https'
+            : 'http';
+    }
+
+    $forwardedHost = trim(
+        explode(
+            ',',
+            (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? '')
+        )[0]
+    );
+
+    $host = $forwardedHost !== ''
+        ? $forwardedHost
+        : trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+
+    if (
+        $host === ''
+        || preg_match(
+            '/^[A-Za-z0-9.-]+(?::[0-9]{1,5})?$/',
+            $host
+        ) !== 1
+    ) {
+        return $url;
+    }
+
+    return $scheme . '://' . $host . $url;
+};
+
 $storeName = trim(
     (string) (
         $store['name']
@@ -40,6 +100,57 @@ $metaDescription = trim(
         $meta_description
         ?? 'Shop products, track orders, and manage your account.'
     )
+);
+
+$robots = trim(
+    (string) (
+        $robots
+        ?? 'noindex,follow'
+    )
+);
+
+if ($robots === '') {
+    $robots = 'noindex,follow';
+}
+
+$canonicalUrl = $absoluteUrl(
+    $canonical_url
+    ?? ''
+);
+
+$socialPreview = (bool) (
+    $social_preview
+    ?? false
+);
+
+$ogTitle = trim(
+    (string) (
+        $og_title
+        ?? $pageTitle
+    )
+);
+
+$ogDescription = trim(
+    (string) (
+        $og_description
+        ?? $metaDescription
+    )
+);
+
+$ogType = trim(
+    (string) (
+        $og_type
+        ?? 'website'
+    )
+);
+
+if ($ogType === '') {
+    $ogType = 'website';
+}
+
+$ogImage = $absoluteUrl(
+    $og_image
+    ?? ''
 );
 
 $cartQuantity = max(
@@ -75,8 +186,73 @@ $year = date('Y');
 
     <meta
         name="robots"
-        content="index,follow"
+        content="<?= $escape($robots) ?>"
     >
+
+    <?php if ($canonicalUrl !== ''): ?>
+        <link
+            rel="canonical"
+            href="<?= $escape($canonicalUrl) ?>"
+        >
+    <?php endif; ?>
+
+    <?php if ($socialPreview): ?>
+        <meta
+            property="og:site_name"
+            content="<?= $escape($storeName) ?>"
+        >
+
+        <meta
+            property="og:title"
+            content="<?= $escape($ogTitle) ?>"
+        >
+
+        <meta
+            property="og:description"
+            content="<?= $escape($ogDescription) ?>"
+        >
+
+        <meta
+            property="og:type"
+            content="<?= $escape($ogType) ?>"
+        >
+
+        <?php if ($canonicalUrl !== ''): ?>
+            <meta
+                property="og:url"
+                content="<?= $escape($canonicalUrl) ?>"
+            >
+        <?php endif; ?>
+
+        <?php if ($ogImage !== ''): ?>
+            <meta
+                property="og:image"
+                content="<?= $escape($ogImage) ?>"
+            >
+        <?php endif; ?>
+
+        <meta
+            name="twitter:card"
+            content="<?= $ogImage !== '' ? 'summary_large_image' : 'summary' ?>"
+        >
+
+        <meta
+            name="twitter:title"
+            content="<?= $escape($ogTitle) ?>"
+        >
+
+        <meta
+            name="twitter:description"
+            content="<?= $escape($ogDescription) ?>"
+        >
+
+        <?php if ($ogImage !== ''): ?>
+            <meta
+                name="twitter:image"
+                content="<?= $escape($ogImage) ?>"
+            >
+        <?php endif; ?>
+    <?php endif; ?>
 
     <link
         rel="stylesheet"
