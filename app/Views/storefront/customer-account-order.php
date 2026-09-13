@@ -26,19 +26,10 @@ $receiptQuery = http_build_query([
     'email' => $customer['email'] ?? '',
 ]);
 
-$orderStatus = strtolower(
-    trim((string) ($order['status'] ?? ''))
-);
-
 $orderId = (int) ($order['id'] ?? 0);
-
 $canRequestReturn =
     $orderId > 0
-    && in_array(
-        $orderStatus,
-        ['shipped', 'completed'],
-        true
-    );
+    && (bool) ($can_request_return ?? false);
 
 $returnQuery = http_build_query([
     'order_id' => $orderId,

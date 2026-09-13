@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Core\Controller;
 use App\Core\Request;
 use App\Repositories\CustomerPortalRepository;
+use App\Repositories\ReturnRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Customers\CustomerPortalService;
 
@@ -17,6 +18,7 @@ class CustomerAccountController extends Controller
 
     public function __construct(
         private CustomerPortalRepository $portal,
+        private ReturnRepository $returns,
         private CustomerPortalService $service,
         private CsrfService $csrf
     ) {
@@ -236,6 +238,29 @@ class CustomerAccountController extends Controller
             return '404 - Order not found';
         }
 
+        $orderItems = $this->portal->orderItems($orderId);
+        $canRequestReturn = false;
+        $orderStatus = strtolower(
+            trim((string) ($order['status'] ?? ''))
+        );
+
+        if (in_array($orderStatus, ['shipped', 'completed'], true)) {
+            foreach (
+                $this->returns->availableItemsForOrder($orderId)
+                as $returnItem
+            ) {
+                if (
+                    (int) (
+                        $returnItem['quantity_available_to_return']
+                        ?? 0
+                    ) > 0
+                ) {
+                    $canRequestReturn = true;
+                    break;
+                }
+            }
+        }
+
         return $this->view(
             'storefront.customer-account-order',
             [
@@ -243,9 +268,10 @@ class CustomerAccountController extends Controller
                 'store' => $context['store'],
                 'customer' => $context['customer'],
                 'order' => $order,
-                'items' => $this->portal->orderItems($orderId),
+                'items' => $orderItems,
                 'events' => $this->portal->publicOrderEvents($orderId),
                 'purchase_orders' => $this->portal->purchaseOrdersForOrder($orderId),
+                'can_request_return' => $canRequestReturn,
             ],
             'storefront'
         );
