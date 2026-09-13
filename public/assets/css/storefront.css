@@ -1783,6 +1783,20 @@ textarea {
     box-shadow: var(--sf-shadow-md);
 }
 
+/* Keyboard focus for product cards.
+   The actual focusable link sits inside an overflow-hidden article,
+   so draw the visible focus ring on the parent card instead. */
+.product-card:focus-within {
+    border-color: var(--sf-accent);
+    box-shadow:
+        0 0 0 3px rgba(37, 99, 235, 0.28),
+        var(--sf-shadow-md);
+}
+
+.product-card-link:focus-visible {
+    outline: none;
+}
+
 .category-card {
     padding: 24px;
 }
@@ -1818,7 +1832,8 @@ textarea {
 
 .product-image-wrap {
     position: relative;
-    height: 250px;
+    aspect-ratio: 4 / 3;
+    height: auto;
     overflow: hidden;
     background:
         linear-gradient(
@@ -1831,7 +1846,7 @@ textarea {
 .product-image {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     transition: transform 260ms ease;
 }
 
@@ -2231,10 +2246,6 @@ textarea {
         grid-template-columns: 1fr;
     }
 
-    .product-image-wrap {
-        height: 280px;
-    }
-
     .product-detail-layout {
         gap: 22px;
         padding: 36px 0;
@@ -2575,6 +2586,68 @@ textarea {
     border-color: var(--sf-border-strong);
     border-radius: 11px;
     background: #ffffff;
+}
+
+.checkout-validation-summary {
+    margin: 0 0 26px;
+    padding: 18px 20px;
+    border: 2px solid #f04438;
+    border-radius: 14px;
+    background: var(--sf-danger-soft);
+    color: var(--sf-danger);
+}
+
+.checkout-validation-summary[hidden] {
+    display: none;
+}
+
+.checkout-validation-summary h2 {
+    margin: 0;
+    color: #912018;
+    font-size: 18px;
+    line-height: 1.35;
+}
+
+.checkout-validation-summary p {
+    margin: 7px 0 10px;
+    color: #b42318;
+    line-height: 1.5;
+}
+
+.checkout-validation-summary ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 20px;
+}
+
+.checkout-validation-summary a {
+    color: #912018;
+    font-weight: 750;
+}
+
+.checkout-field-error {
+    margin: 7px 0 0;
+    color: #b42318;
+    font-size: 13px;
+    font-weight: 750;
+    line-height: 1.45;
+}
+
+.checkout-form-panel .form-group.has-error > label {
+    color: #912018;
+}
+
+.checkout-form-panel input[aria-invalid="true"],
+.checkout-form-panel select[aria-invalid="true"],
+.checkout-form-panel textarea[aria-invalid="true"] {
+    border-color: #f04438;
+    background: #fffafa;
+}
+
+.shipping-method-list.has-error .shipping-method-option,
+.payment-method-list.has-error .payment-method-option {
+    border-color: #f04438;
 }
 
 .shipping-method-list,

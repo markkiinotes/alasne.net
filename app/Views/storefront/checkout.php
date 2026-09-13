@@ -156,6 +156,23 @@ $taxRate = $quoteReady
                     value="<?= $escape($csrf_token) ?>"
                 >
 
+                <div
+                    id="checkout-validation-summary"
+                    class="checkout-validation-summary"
+                    role="alert"
+                    hidden
+                >
+                    <h2>
+                        There are problems with your checkout information.
+                    </h2>
+
+                    <p>
+                        Please correct the fields below before continuing.
+                    </p>
+
+                    <ul id="checkout-validation-list"></ul>
+                </div>
+
                 <div class="checkout-section-title">
                     <span class="checkout-section-number">1</span>
 
@@ -418,6 +435,7 @@ $taxRate = $quoteReady
                                 class="shipping-method-option"
                             >
                                 <input
+                                    id="shipping_method_<?= $escape($method['id']) ?>"
                                     type="radio"
                                     name="shipping_method_id"
                                     value="<?= $escape(
@@ -527,6 +545,7 @@ $taxRate = $quoteReady
                                 class="payment-method-option"
                             >
                                 <input
+                                    id="payment_method_<?= $escape($method['id']) ?>"
                                     type="radio"
                                     name="payment_method_id"
                                     value="<?= $escape(
@@ -951,6 +970,405 @@ document.addEventListener('DOMContentLoaded', () => {
     const testPanel = document.getElementById(
         'test-payment-panel'
     );
+
+    const checkoutForm = document.getElementById(
+        'checkout-form'
+    );
+
+    const validationSummary = document.getElementById(
+        'checkout-validation-summary'
+    );
+
+    const validationList = document.getElementById(
+        'checkout-validation-list'
+    );
+
+    const validationLabels = {
+        first_name: 'First Name',
+        last_name: 'Last Name',
+        email: 'Email Address',
+        address_line_1: 'Street Address',
+        city: 'City',
+        state: 'State or Region',
+        postal_code: 'Postal Code',
+        country: 'Country',
+        shipping_method_id: 'Shipping Method',
+        payment_method_id: 'Payment Method'
+    };
+
+    let firstInvalidControl = null;
+    let validationCycleScheduled = false;
+
+    const validationKey = (control) => (
+        control.name || control.id || 'field'
+    );
+
+    const validationErrorId = (key) => (
+        'checkout-error-' + key.replace(/_/g, '-')
+    );
+
+    const controlsForKey = (key) => (
+        checkoutForm
+            ? Array.from(
+                checkoutForm.querySelectorAll(
+                    '[name="' + key + '"]'
+                )
+            )
+            : []
+    );
+
+    const describedByTokens = (control) => (
+        (control.getAttribute('aria-describedby') || '')
+            .split(/\s+/)
+            .filter(Boolean)
+    );
+
+    const addDescription = (control, id) => {
+        const tokens = describedByTokens(control);
+
+        if (! tokens.includes(id)) {
+            tokens.push(id);
+        }
+
+        control.setAttribute(
+            'aria-describedby',
+            tokens.join(' ')
+        );
+    };
+
+    const removeDescription = (control, id) => {
+        const tokens = describedByTokens(control)
+            .filter((token) => token !== id);
+
+        if (tokens.length > 0) {
+            control.setAttribute(
+                'aria-describedby',
+                tokens.join(' ')
+            );
+        } else {
+            control.removeAttribute('aria-describedby');
+        }
+    };
+
+    const validationMessage = (control, key) => {
+        const label = validationLabels[key] || 'This field';
+
+        if (control.validity.valueMissing) {
+            return label + ' is required.';
+        }
+
+        if (
+            control.type === 'email'
+            && control.validity.typeMismatch
+        ) {
+            return 'Enter a valid email address.';
+        }
+
+        if (control.validity.tooShort) {
+            return label + ' is too short.';
+        }
+
+        if (control.validity.tooLong) {
+            return label + ' is too long.';
+        }
+
+        if (control.validity.rangeUnderflow) {
+            return label + ' is below the allowed minimum.';
+        }
+
+        if (control.validity.rangeOverflow) {
+            return label + ' is above the allowed maximum.';
+        }
+
+        if (control.validity.patternMismatch) {
+            return 'Check the format for ' + label + '.';
+        }
+
+        return 'Check ' + label + ' and try again.';
+    };
+
+    const errorTarget = (control, key) => {
+        if (
+            control.type === 'radio'
+            && key === 'shipping_method_id'
+        ) {
+            return document.querySelector(
+                '.shipping-method-list'
+            );
+        }
+
+        if (
+            control.type === 'radio'
+            && key === 'payment_method_id'
+        ) {
+            return document.querySelector(
+                '.payment-method-list'
+            );
+        }
+
+        return control;
+    };
+
+    const showFieldError = (control, message) => {
+        if (! checkoutForm) {
+            return;
+        }
+
+        const key = validationKey(control);
+        const id = validationErrorId(key);
+        const controls = controlsForKey(key);
+
+        controls.forEach((item) => {
+            item.setAttribute('aria-invalid', 'true');
+            addDescription(item, id);
+        });
+
+        const target = errorTarget(control, key);
+
+        if (! target) {
+            return;
+        }
+
+        if (
+            control.type === 'radio'
+            && target.classList
+        ) {
+            target.classList.add('has-error');
+        } else {
+            const group = control.closest('.form-group');
+
+            if (group) {
+                group.classList.add('has-error');
+            }
+        }
+
+        let error = document.getElementById(id);
+
+        if (! error) {
+            error = document.createElement('p');
+            error.id = id;
+            error.className = 'checkout-field-error';
+            error.dataset.validationTarget =
+                control.id || '';
+
+            target.insertAdjacentElement(
+                'afterend',
+                error
+            );
+        }
+
+        error.textContent = message;
+        error.hidden = false;
+    };
+
+    const clearFieldError = (control) => {
+        if (! checkoutForm) {
+            return;
+        }
+
+        const key = validationKey(control);
+        const id = validationErrorId(key);
+        const controls = controlsForKey(key);
+
+        controls.forEach((item) => {
+            item.removeAttribute('aria-invalid');
+            removeDescription(item, id);
+        });
+
+        if (control.type === 'radio') {
+            const target = errorTarget(control, key);
+
+            if (target && target.classList) {
+                target.classList.remove('has-error');
+            }
+        } else {
+            const group = control.closest('.form-group');
+
+            if (group) {
+                group.classList.remove('has-error');
+            }
+        }
+
+        const error = document.getElementById(id);
+
+        if (error) {
+            error.remove();
+        }
+    };
+
+    const refreshValidationSummary = () => {
+        if (! validationSummary || ! validationList) {
+            return;
+        }
+
+        const errors = Array.from(
+            document.querySelectorAll(
+                '.checkout-field-error:not([hidden])'
+            )
+        );
+
+        validationList.replaceChildren();
+
+        errors.forEach((error) => {
+            const item = document.createElement('li');
+            const targetId =
+                error.dataset.validationTarget || '';
+            const link = document.createElement('a');
+
+            link.textContent =
+                error.textContent || 'Check this field.';
+
+            if (targetId !== '') {
+                link.href = '#' + targetId;
+
+                link.addEventListener('click', (event) => {
+                    event.preventDefault();
+
+                    const target = document.getElementById(
+                        targetId
+                    );
+
+                    if (target) {
+                        target.focus();
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+                    }
+                });
+            }
+
+            item.appendChild(link);
+            validationList.appendChild(item);
+        });
+
+        validationSummary.hidden = errors.length === 0;
+    };
+
+    const clearIfValid = (control) => {
+        if (! control) {
+            return;
+        }
+
+        const key = validationKey(control);
+
+        if (control.type === 'radio') {
+            const checked = checkoutForm
+                ? checkoutForm.querySelector(
+                    '[name="' + key + '"]:checked'
+                )
+                : null;
+
+            if (checked) {
+                clearFieldError(control);
+                refreshValidationSummary();
+            }
+
+            return;
+        }
+
+        const error = document.getElementById(
+            validationErrorId(key)
+        );
+
+        if (control.validity.valid) {
+            clearFieldError(control);
+            refreshValidationSummary();
+            return;
+        }
+
+        if (error) {
+            showFieldError(
+                control,
+                validationMessage(control, key)
+            );
+            refreshValidationSummary();
+        }
+    };
+
+    if (checkoutForm) {
+        checkoutForm.addEventListener(
+            'invalid',
+            (event) => {
+                const control = event.target;
+
+                if (! (
+                    control instanceof HTMLInputElement
+                    || control instanceof HTMLSelectElement
+                    || control instanceof HTMLTextAreaElement
+                )) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                const key = validationKey(control);
+
+                if (! validationLabels[key]) {
+                    return;
+                }
+
+                showFieldError(
+                    control,
+                    validationMessage(control, key)
+                );
+
+                if (! firstInvalidControl) {
+                    firstInvalidControl = control;
+                }
+
+                if (! validationCycleScheduled) {
+                    validationCycleScheduled = true;
+
+                    window.setTimeout(() => {
+                        refreshValidationSummary();
+
+                        if (firstInvalidControl) {
+                            firstInvalidControl.focus();
+                            firstInvalidControl.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'center'
+                            });
+                        }
+
+                        firstInvalidControl = null;
+                        validationCycleScheduled = false;
+                    }, 0);
+                }
+            },
+            true
+        );
+
+        checkoutForm.addEventListener(
+            'submit',
+            () => {
+                if (validationSummary) {
+                    validationSummary.hidden = true;
+                }
+            }
+        );
+
+        Object.keys(validationLabels).forEach((key) => {
+            controlsForKey(key).forEach((control) => {
+                const eventName =
+                    control.type === 'radio'
+                        ? 'change'
+                        : 'input';
+
+                control.addEventListener(
+                    eventName,
+                    () => clearIfValid(control)
+                );
+
+                if (eventName !== 'change') {
+                    control.addEventListener(
+                        'change',
+                        () => clearIfValid(control)
+                    );
+                }
+            });
+        });
+    }
 
     const money = (amount) => (
         new Intl.NumberFormat(
