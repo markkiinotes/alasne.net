@@ -9,7 +9,19 @@
     }
   },
   "require": {
+    "php": "^8.1",
+    "ext-json": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*",
     "vlucas/phpdotenv": "^5.6",
     "phpmailer/phpmailer": "^7.1"
+  },
+  "suggest": {
+    "ext-curl": "Recommended for HTTP-based carrier and supplier integrations.",
+    "ext-fileinfo": "Recommended for secure MIME validation in upload workflows.",
+    "ext-gd": "Recommended for image processing and WebP generation.",
+    "ext-zip": "Recommended for archive/import/export workflows."
   }
 }

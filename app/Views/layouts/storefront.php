@@ -2,72 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Support\HttpSecurity;
+
 $escape = static function (mixed $value): string {
     return htmlspecialchars(
         (string) $value,
         ENT_QUOTES | ENT_SUBSTITUTE,
         'UTF-8'
     );
-};
-
-$absoluteUrl = static function (mixed $value): string {
-    $url = trim((string) $value);
-
-    if ($url === '') {
-        return '';
-    }
-
-    if (preg_match('#^https?://#i', $url) === 1) {
-        return $url;
-    }
-
-    if (! str_starts_with($url, '/')) {
-        return '';
-    }
-
-    $forwardedProto = trim(
-        explode(
-            ',',
-            (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')
-        )[0]
-    );
-
-    if (in_array(strtolower($forwardedProto), ['http', 'https'], true)) {
-        $scheme = strtolower($forwardedProto);
-    } else {
-        $https = strtolower(
-            trim(
-                (string) ($_SERVER['HTTPS'] ?? '')
-            )
-        );
-
-        $scheme = ($https !== '' && $https !== 'off')
-            ? 'https'
-            : 'http';
-    }
-
-    $forwardedHost = trim(
-        explode(
-            ',',
-            (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? '')
-        )[0]
-    );
-
-    $host = $forwardedHost !== ''
-        ? $forwardedHost
-        : trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
-
-    if (
-        $host === ''
-        || preg_match(
-            '/^[A-Za-z0-9.-]+(?::[0-9]{1,5})?$/',
-            $host
-        ) !== 1
-    ) {
-        return $url;
-    }
-
-    return $scheme . '://' . $host . $url;
 };
 
 $storeName = trim(
@@ -113,7 +55,7 @@ if ($robots === '') {
     $robots = 'noindex,follow';
 }
 
-$canonicalUrl = $absoluteUrl(
+$canonicalUrl = HttpSecurity::absoluteUrl(
     $canonical_url
     ?? ''
 );
@@ -148,7 +90,7 @@ if ($ogType === '') {
     $ogType = 'website';
 }
 
-$ogImage = $absoluteUrl(
+$ogImage = HttpSecurity::absoluteUrl(
     $og_image
     ?? ''
 );

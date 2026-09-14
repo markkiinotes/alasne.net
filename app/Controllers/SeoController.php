@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Repositories\SeoRepository;
+use App\Support\HttpSecurity;
 
 class SeoController
 {
@@ -19,7 +20,7 @@ class SeoController
             'text/plain; charset=UTF-8'
         );
 
-        $baseUrl = $this->baseUrl();
+        $baseUrl = HttpSecurity::baseUrl();
 
         return implode(
             "\n",
@@ -43,7 +44,7 @@ class SeoController
             'application/xml; charset=UTF-8'
         );
 
-        $baseUrl = $this->baseUrl();
+        $baseUrl = HttpSecurity::baseUrl();
 
         $urls = [];
 
@@ -137,105 +138,6 @@ class SeoController
             'Cache-Control: public, max-age=3600',
             true
         );
-
-        header(
-            'X-Content-Type-Options: nosniff',
-            true
-        );
-    }
-
-    private function baseUrl(): string
-    {
-        $forwardedProto = trim(
-            explode(
-                ',',
-                (string) (
-                    $_SERVER[
-                        'HTTP_X_FORWARDED_PROTO'
-                    ]
-                    ?? ''
-                )
-            )[0]
-        );
-
-        if (
-            in_array(
-                strtolower($forwardedProto),
-                ['http', 'https'],
-                true
-            )
-        ) {
-            $scheme = strtolower(
-                $forwardedProto
-            );
-        } else {
-            $https = strtolower(
-                trim(
-                    (string) (
-                        $_SERVER['HTTPS']
-                        ?? ''
-                    )
-                )
-            );
-
-            $scheme =
-                ($https !== '' && $https !== 'off')
-                    ? 'https'
-                    : 'http';
-        }
-
-        $forwardedHost = trim(
-            explode(
-                ',',
-                (string) (
-                    $_SERVER[
-                        'HTTP_X_FORWARDED_HOST'
-                    ]
-                    ?? ''
-                )
-            )[0]
-        );
-
-        $host =
-            $forwardedHost !== ''
-                ? $forwardedHost
-                : trim(
-                    (string) (
-                        $_SERVER['HTTP_HOST']
-                        ?? ''
-                    )
-                );
-
-        if (
-            $host === ''
-            || preg_match(
-                '/^[A-Za-z0-9.-]+(?::[0-9]{1,5})?$/',
-                $host
-            ) !== 1
-        ) {
-            $appUrl = trim(
-                (string) (
-                    $_ENV['APP_URL']
-                    ?? ''
-                )
-            );
-
-            if (
-                preg_match(
-                    '#^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?/?$#i',
-                    $appUrl
-                ) === 1
-            ) {
-                return rtrim(
-                    $appUrl,
-                    '/'
-                );
-            }
-
-            return 'http://localhost';
-        }
-
-        return $scheme . '://' . $host;
     }
 
     private function xml(string $value): string
