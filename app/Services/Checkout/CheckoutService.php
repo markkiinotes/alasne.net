@@ -8,6 +8,8 @@ use App\Repositories\PaymentMethodRepository;
 use App\Repositories\PaymentTransactionRepository;
 use App\Repositories\TaxRuleRepository;
 use App\Services\Mail\EmailOutboxSender;
+use App\Services\Notifications\OrderCreatedNotificationPublisher;
+use App\Services\Notifications\PaymentCapturedNotificationPublisher;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
 use App\Services\Payments\PaymentResult;
 use App\Services\Payments\Providers\TestPaymentProvider;
@@ -35,7 +37,9 @@ class CheckoutService
             throw new RuntimeException('Cart is empty.');
         }
 
-        $emailOutboxId = null;
+        $publishOrderCreated = false;
+        $publishPaymentCaptured = false;
+        $paymentTransactionId = 0;
         $orderId = 0;
         $paymentFailureMessage = null;
 
@@ -219,6 +223,22 @@ class CheckoutService
                 'grand_total' => $grandTotal,
             ]);
 
+            /*
+             * Persist the immutable shipping-address snapshot immediately
+             * after the order is created. Customer profile data can change
+             * later, but historical orders, invoices, packing slips, and
+             * public tracking must continue to show the address used for
+             * this checkout.
+             */
+            $this->createOrderAddressSnapshot(
+                $orderId,
+                $customerData,
+                (string) (
+                    $taxSnapshot['tax_country_code']
+                    ?? ''
+                )
+            );
+
             $this->recordOrderEvent(
                 $orderId,
                 'order_created',
@@ -364,12 +384,12 @@ class CheckoutService
                 }
 
                 /*
-                 * Confirmation is queued only for paid orders.
+                 * The paid order is now eligible for the real
+                 * storefront notification events. Publishing
+                 * happens only after the transaction commits.
                  */
-                $emailOutboxId =
-                    $this->queueOrderConfirmationEmail(
-                        $orderId
-                    );
+                $publishOrderCreated = true;
+                $publishPaymentCaptured = true;
             }
 
             $this->db->commit();
@@ -389,13 +409,61 @@ class CheckoutService
         }
 
         /*
-         * Email delivery occurs only after the paid order and
-         * its inventory updates have safely committed.
+         * Publish the real order.created event only after:
+         *
+         * - payment is approved,
+         * - the order is marked paid,
+         * - inventory updates succeed, and
+         * - the database transaction commits.
+         *
+         * Notification failures are isolated from checkout. A
+         * valid paid order must remain successful even if the
+         * notification stack has a temporary problem.
          */
-        if ($emailOutboxId !== null) {
-            $this->emailSender->sendOne(
-                $emailOutboxId
-            );
+        if ($publishOrderCreated && $orderId > 0) {
+            try {
+                $publisher =
+                    new OrderCreatedNotificationPublisher(
+                        $this->db
+                    );
+
+                $publisher->publish(
+                    $orderId
+                );
+            } catch (\Throwable $notificationException) {
+                error_log(
+                    '[Alasne order.created notification] '
+                    . $notificationException->getMessage()
+                );
+            }
+        }
+
+        /*
+         * payment.captured is published separately from
+         * order.created. One notification failure must never
+         * prevent the other event from being recorded.
+         */
+        if (
+            $publishPaymentCaptured
+            && $orderId > 0
+            && $paymentTransactionId > 0
+        ) {
+            try {
+                $paymentPublisher =
+                    new PaymentCapturedNotificationPublisher(
+                        $this->db
+                    );
+
+                $paymentPublisher->publish(
+                    $orderId,
+                    $paymentTransactionId
+                );
+            } catch (\Throwable $notificationException) {
+                error_log(
+                    '[Alasne payment.captured notification] '
+                    . $notificationException->getMessage()
+                );
+            }
         }
 
         return $orderId;
@@ -699,6 +767,158 @@ class CheckoutService
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    private function createOrderAddressSnapshot(
+        int $orderId,
+        array $customerData,
+        string $taxCountryCode = ''
+    ): void {
+        $firstName = trim(
+            (string) ($customerData['first_name'] ?? '')
+        );
+
+        $lastName = trim(
+            (string) ($customerData['last_name'] ?? '')
+        );
+
+        $fullName = trim($firstName . ' ' . $lastName);
+
+        $addressLine1 = trim(
+            (string) ($customerData['address_line_1'] ?? '')
+        );
+
+        $addressLine2 = trim(
+            (string) ($customerData['address_line_2'] ?? '')
+        );
+
+        $city = trim(
+            (string) ($customerData['city'] ?? '')
+        );
+
+        $stateRegion = trim(
+            (string) ($customerData['state'] ?? '')
+        );
+
+        $postalCode = trim(
+            (string) ($customerData['postal_code'] ?? '')
+        );
+
+        $phone = trim(
+            (string) ($customerData['phone'] ?? '')
+        );
+
+        $company = trim(
+            (string) ($customerData['company'] ?? '')
+        );
+
+        if (
+            $fullName === ''
+            || $addressLine1 === ''
+            || $city === ''
+            || $stateRegion === ''
+            || $postalCode === ''
+        ) {
+            throw new RuntimeException(
+                'Shipping address is incomplete.'
+            );
+        }
+
+        $countryCode = $this->resolveCountryCode(
+            $taxCountryCode,
+            (string) ($customerData['country'] ?? '')
+        );
+
+        $stmt = $this->db->prepare("
+            INSERT INTO order_addresses (
+                order_id,
+                type,
+                full_name,
+                company,
+                address_line_1,
+                address_line_2,
+                city,
+                state_region,
+                postal_code,
+                country_code,
+                phone,
+                created_at,
+                updated_at
+            ) VALUES (
+                :order_id,
+                'shipping',
+                :full_name,
+                :company,
+                :address_line_1,
+                :address_line_2,
+                :city,
+                :state_region,
+                :postal_code,
+                :country_code,
+                :phone,
+                NOW(),
+                NOW()
+            )
+        ");
+
+        $stmt->execute([
+            'order_id' => $orderId,
+            'full_name' => $fullName,
+            'company' => $company !== '' ? $company : null,
+            'address_line_1' => $addressLine1,
+            'address_line_2' =>
+                $addressLine2 !== '' ? $addressLine2 : null,
+            'city' => $city,
+            'state_region' => $stateRegion,
+            'postal_code' => $postalCode,
+            'country_code' => $countryCode,
+            'phone' => $phone !== '' ? $phone : null,
+        ]);
+    }
+
+    private function resolveCountryCode(
+        string $taxCountryCode,
+        string $customerCountry
+    ): string {
+        $taxCountryCode = strtoupper(
+            trim($taxCountryCode)
+        );
+
+        if (
+            preg_match('/^[A-Z]{2}$/', $taxCountryCode)
+            === 1
+        ) {
+            return $taxCountryCode;
+        }
+
+        $customerCountry = strtoupper(
+            trim($customerCountry)
+        );
+
+        if (
+            preg_match('/^[A-Z]{2}$/', $customerCountry)
+            === 1
+        ) {
+            return $customerCountry;
+        }
+
+        $knownCountries = [
+            'USA' => 'US',
+            'UNITED STATES' => 'US',
+            'UNITED STATES OF AMERICA' => 'US',
+            'CANADA' => 'CA',
+            'MEXICO' => 'MX',
+            'UNITED KINGDOM' => 'GB',
+            'GREAT BRITAIN' => 'GB',
+        ];
+
+        if (isset($knownCountries[$customerCountry])) {
+            return $knownCountries[$customerCountry];
+        }
+
+        throw new RuntimeException(
+            'Shipping country must resolve to a two-letter country code.'
+        );
     }
 
     private function createOrderItem(
@@ -1305,6 +1525,8 @@ class CheckoutService
                 payment_transaction_id =
                     :payment_transaction_id,
                 amount_paid = :amount_paid,
+                external_payment_amount =
+                    :external_payment_amount,
                 amount_refunded = 0.00,
                 paid_at = NOW(),
                 payment_failed_at = NULL,
@@ -1318,6 +1540,12 @@ class CheckoutService
                 $paymentTransactionId,
             'amount_paid' => number_format(
                 $amount,
+                2,
+                '.',
+                ''
+            ),
+            'external_payment_amount' => number_format(
+                max(0, $amount),
                 2,
                 '.',
                 ''

@@ -221,34 +221,29 @@ class OrderRepository
     {
         $stmt = $this->db->prepare("
             SELECT
-                o.id,
-                o.order_number,
-                o.store_id,
-                o.customer_id,
-                o.status,
-				o.shipping_carrier,
-				o.tracking_number,
-				o.tracking_url,
-				o.shipped_at,
-				o.fulfillment_notes,
-                o.subtotal,
-                o.tax_total,
-                o.shipping_total,
-                o.discount_total,
-                o.grand_total,
-                o.placed_at,
-                o.created_at,
+                o.*,
                 s.name AS store_name,
                 s.domain AS store_domain,
-                CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
+                CONCAT(
+                    c.first_name,
+                    ' ',
+                    c.last_name
+                ) AS customer_name,
+                c.first_name AS customer_first_name,
+                c.last_name AS customer_last_name,
                 c.email AS customer_email,
                 c.phone AS customer_phone,
+                c.address_line_1 AS customer_address_line_1,
+                c.address_line_2 AS customer_address_line_2,
                 c.city AS customer_city,
                 c.state AS customer_state,
+                c.postal_code AS customer_postal_code,
                 c.country AS customer_country
             FROM orders o
-            INNER JOIN stores s ON s.id = o.store_id
-            INNER JOIN customers c ON c.id = o.customer_id
+            INNER JOIN stores s
+                ON s.id = o.store_id
+            INNER JOIN customers c
+                ON c.id = o.customer_id
             WHERE o.id = :id
             LIMIT 1
         ");
@@ -262,6 +257,42 @@ class OrderRepository
         return $order ?: null;
     }
 
+    public function addressForOrder(
+        int $orderId,
+        string $type = 'shipping'
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT
+                id,
+                order_id,
+                type,
+                full_name,
+                company,
+                address_line_1,
+                address_line_2,
+                city,
+                state_region,
+                postal_code,
+                country_code,
+                phone,
+                created_at,
+                updated_at
+            FROM order_addresses
+            WHERE order_id = :order_id
+            AND type = :type
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'order_id' => $orderId,
+            'type' => $type,
+        ]);
+
+        $address = $stmt->fetch();
+
+        return $address ?: null;
+    }
+
     public function itemsForOrder(int $orderId): array
     {
         $stmt = $this->db->prepare("
@@ -269,7 +300,14 @@ class OrderRepository
                 oi.id,
                 oi.product_id,
                 oi.product_name,
-                oi.sku,
+                COALESCE(
+                    NULLIF(oi.product_sku, ''),
+                    oi.sku
+                ) AS sku,
+                COALESCE(
+                    NULLIF(oi.product_sku, ''),
+                    oi.sku
+                ) AS product_sku,
                 oi.quantity,
                 oi.unit_price,
                 oi.line_total

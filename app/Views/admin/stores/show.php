@@ -197,6 +197,20 @@
     </a>
 
     <a
+        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/return-policy"
+        class="button-primary"
+    >
+        Manage Return Policy
+    </a>
+
+    <a
+        href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/carrier-integration"
+        class="button-primary"
+    >
+        Manage Carrier Integration
+    </a>
+
+    <a
         href="/admin/stores/<?= htmlspecialchars((string) $store['id']) ?>/edit"
         class="button-primary"
     >

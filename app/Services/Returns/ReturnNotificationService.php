@@ -1,0 +1,919 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Returns;
+
+use App\Repositories\ReturnRepository;
+use PDO;
+use RuntimeException;
+
+class ReturnNotificationService
+{
+    public function __construct(
+        private PDO $db,
+        private ReturnRepository $returns
+    ) {
+    }
+
+    public function queueForEvent(
+        int $returnId,
+        string $event
+    ): ?int {
+        $return = $this->returns->find($returnId);
+
+        if (! $return) {
+            throw new RuntimeException(
+                'Return notification could not find the return.'
+            );
+        }
+
+        $customerEmail = trim(
+            (string) (
+                $return['customer_email'] ?? ''
+            )
+        );
+
+        if (
+            $customerEmail === ''
+            || ! filter_var(
+                $customerEmail,
+                FILTER_VALIDATE_EMAIL
+            )
+        ) {
+            return null;
+        }
+
+        $message = $this->messageForEvent(
+            $event,
+            $return
+        );
+
+        $items = $this->returns->items($returnId);
+
+        $trackingUrl = app_url(
+            '/store/'
+            . rawurlencode(
+                (string) $return['store_slug']
+            )
+            . '/returns/track?return_number='
+            . rawurlencode(
+                (string) $return['return_number']
+            )
+        );
+
+        $bodyHtml = $this->buildHtml(
+            $return,
+            $items,
+            $message,
+            $trackingUrl
+        );
+
+        $bodyText = $this->buildText(
+            $return,
+            $items,
+            $message,
+            $trackingUrl
+        );
+
+        $stmt = $this->db->prepare("
+            INSERT INTO email_outbox (
+                store_id,
+                order_id,
+                to_email,
+                to_name,
+                subject,
+                body_html,
+                body_text,
+                status,
+                attempts,
+                created_at,
+                updated_at
+            ) VALUES (
+                :store_id,
+                :order_id,
+                :to_email,
+                :to_name,
+                :subject,
+                :body_html,
+                :body_text,
+                'pending',
+                0,
+                NOW(),
+                NOW()
+            )
+        ");
+
+        $stmt->execute([
+            'store_id' => (int) $return['store_id'],
+            'order_id' => (int) $return['order_id'],
+            'to_email' => $customerEmail,
+            'to_name' => trim(
+                (string) (
+                    $return['customer_name'] ?? ''
+                )
+            ) ?: null,
+            'subject' => $message['subject'],
+            'body_html' => $bodyHtml,
+            'body_text' => $bodyText,
+        ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    private function messageForEvent(
+        string $event,
+        array $return
+    ): array {
+        $returnNumber = (string)
+            $return['return_number'];
+
+        $approvedAmount = number_format(
+            (float) (
+                $return['approved_refund_amount']
+                ?? 0
+            ),
+            2
+        );
+
+        return match ($event) {
+            'requested' => [
+                'subject' =>
+                    'Return request received - '
+                    . $returnNumber,
+                'heading' => 'Return request received',
+                'message' =>
+                    'We received your return request and will review it.',
+            ],
+
+            'approved' => [
+                'subject' =>
+                    'Return approved - '
+                    . $returnNumber,
+                'heading' => 'Your return was approved',
+                'message' =>
+                    'Your return was approved and an RMA was issued. Follow the authorization instructions before sending merchandise.',
+            ],
+
+            'received' => [
+                'subject' =>
+                    'Returned merchandise received - '
+                    . $returnNumber,
+                'heading' =>
+                    'We received your returned merchandise',
+                'message' =>
+                    'The returned items were received and inspected. The approved merchandise value is $'
+                    . $approvedAmount
+                    . '.',
+            ],
+
+            'completed' => [
+                'subject' =>
+                    'Return completed - '
+                    . $returnNumber,
+                'heading' => 'Your return is complete',
+                'message' =>
+                    $this->completionMessage($return),
+            ],
+
+            'cancelled' => [
+                'subject' =>
+                    'Return cancelled - '
+                    . $returnNumber,
+                'heading' => 'Your return was cancelled',
+                'message' =>
+                    'This return request is no longer active.',
+            ],
+
+            'refund_failed' => [
+                'subject' =>
+                    'Refund requires attention - '
+                    . $returnNumber,
+                'heading' =>
+                    'Your return is complete, but the refund failed',
+                'message' =>
+                    'The merchandise return is complete, but the payment refund was not approved. The store will review the payment issue.',
+            ],
+
+            default => throw new RuntimeException(
+                'Unsupported return notification event.'
+            ),
+        };
+    }
+
+
+    private function completionMessage(
+        array $return
+    ): string {
+        $parts = [];
+
+        if (
+            (float) (
+                $return[
+                    'redeemed_credit_restored_amount'
+                ] ?? 0
+            ) > 0
+        ) {
+            $parts[] =
+                '$'
+                . number_format(
+                    (float) $return[
+                        'redeemed_credit_restored_amount'
+                    ],
+                    2
+                )
+                . ' in redeemed store credit was restored';
+        }
+
+        if (
+            (float) (
+                $return['external_refund_amount']
+                ?? $return['cash_refund_amount']
+                ?? 0
+            ) > 0
+        ) {
+            $externalRefund = (float) (
+                $return['external_refund_amount']
+                ?? $return['cash_refund_amount']
+                ?? 0
+            );
+
+            $parts[] =
+                '$'
+                . number_format(
+                    $externalRefund,
+                    2
+                )
+                . (
+                    ($return['refund_status'] ?? '')
+                    === 'succeeded'
+                        ? ' was refunded to the external payment method'
+                        : ' external-payment refund was recorded for processing'
+                );
+        }
+
+        if (
+            (float) (
+                $return['store_credit_amount'] ?? 0
+            ) > 0
+        ) {
+            $parts[] =
+                '$'
+                . number_format(
+                    (float) $return[
+                        'store_credit_amount'
+                    ],
+                    2
+                )
+                . ' was issued as store credit';
+        }
+
+        if (
+            (float) (
+                $return['exchange_value'] ?? 0
+            ) > 0
+        ) {
+            $parts[] =
+                'replacement order '
+                . (
+                    $return[
+                        'exchange_order_number'
+                    ]
+                    ?? 'was created'
+                );
+        }
+
+        if (empty($parts)) {
+            return 'Your physical return is complete.';
+        }
+
+        return 'Your return is complete: '
+            . implode('; ', $parts)
+            . '.';
+    }
+
+    private function resolutionHtml(
+        array $return
+    ): string {
+        if (
+            ($return['status'] ?? '')
+            !== 'completed'
+        ) {
+            return '';
+        }
+
+        $rows = '';
+
+        foreach (
+            [
+                'Redeemed Store Credit Restored' =>
+                    $return[
+                        'redeemed_credit_restored_amount'
+                    ] ?? 0,
+                'External Payment Refund' =>
+                    $return['external_refund_amount']
+                    ?? $return['cash_refund_amount']
+                    ?? 0,
+                'New Store Credit Issued' =>
+                    $return['store_credit_amount']
+                    ?? 0,
+                'Replacement Merchandise' =>
+                    $return['exchange_value']
+                    ?? 0,
+            ]
+            as $label => $amount
+        ) {
+            if ((float) $amount <= 0) {
+                continue;
+            }
+
+            $rows .=
+                '<strong>'
+                . htmlspecialchars($label)
+                . ':</strong> $'
+                . number_format(
+                    (float) $amount,
+                    2
+                )
+                . '<br>';
+        }
+
+        if (! empty(
+            $return['exchange_order_number']
+        )) {
+            $rows .=
+                '<strong>Exchange Order:</strong> '
+                . htmlspecialchars(
+                    (string) $return[
+                        'exchange_order_number'
+                    ]
+                )
+                . '<br>';
+        }
+
+        return '
+            <div style="padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;margin:22px 0;">
+                <strong>Resolution:</strong> '
+                . htmlspecialchars(
+                    ucwords(
+                        str_replace(
+                            '_',
+                            ' ',
+                            (string) (
+                                $return[
+                                    'resolution_type'
+                                ]
+                                ?? 'none'
+                            )
+                        )
+                    )
+                )
+                . '<br>'
+                . $rows
+                . '
+            </div>
+        ';
+    }
+
+    private function resolutionText(
+        array $return
+    ): string {
+        if (
+            ($return['status'] ?? '')
+            !== 'completed'
+        ) {
+            return '';
+        }
+
+        $text =
+            "\nResolution: "
+            . ucwords(
+                str_replace(
+                    '_',
+                    ' ',
+                    (string) (
+                        $return[
+                            'resolution_type'
+                        ]
+                        ?? 'none'
+                    )
+                )
+            );
+
+        if (
+            (float) (
+                $return[
+                    'redeemed_credit_restored_amount'
+                ] ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nRedeemed Store Credit Restored: $"
+                . number_format(
+                    (float) $return[
+                        'redeemed_credit_restored_amount'
+                    ],
+                    2
+                );
+        }
+
+        if (
+            (float) (
+                $return['external_refund_amount']
+                ?? $return['cash_refund_amount']
+                ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nExternal Payment Refund: $"
+                . number_format(
+                    (float) (
+                        $return[
+                            'external_refund_amount'
+                        ]
+                        ?? $return[
+                            'cash_refund_amount'
+                        ]
+                        ?? 0
+                    ),
+                    2
+                );
+        }
+
+        if (
+            (float) (
+                $return['store_credit_amount'] ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nStore Credit: $"
+                . number_format(
+                    (float) $return[
+                        'store_credit_amount'
+                    ],
+                    2
+                );
+        }
+
+        if (
+            (float) (
+                $return['exchange_value'] ?? 0
+            ) > 0
+        ) {
+            $text .=
+                "\nReplacement Merchandise: $"
+                . number_format(
+                    (float) $return[
+                        'exchange_value'
+                    ],
+                    2
+                );
+        }
+
+        if (! empty(
+            $return['exchange_order_number']
+        )) {
+            $text .=
+                "\nExchange Order: "
+                . $return[
+                    'exchange_order_number'
+                ];
+        }
+
+        return $text . "\n";
+    }
+
+    private function buildHtml(
+        array $return,
+        array $items,
+        array $message,
+        string $trackingUrl
+    ): string {
+        $itemRows = '';
+
+        foreach ($items as $item) {
+            $itemRows .= '
+                <tr>
+                    <td style="padding:10px;border-bottom:1px solid #e5e7eb;">
+                        '
+                        . htmlspecialchars(
+                            (string) (
+                                $item['product_name']
+                                ?? 'Product'
+                            )
+                        )
+                        . '
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">
+                        '
+                        . (int) (
+                            $item['quantity_requested']
+                            ?? 0
+                        )
+                        . '
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">
+                        $'
+                        . number_format(
+                            (float) (
+                                $item[
+                                    'approved_refund_amount'
+                                ]
+                                ?? $item[
+                                    'requested_refund_amount'
+                                ]
+                                ?? 0
+                            ),
+                            2
+                        )
+                        . '
+                    </td>
+                </tr>
+            ';
+        }
+
+        $customerName = trim(
+            (string) (
+                $return['customer_name'] ?? ''
+            )
+        );
+
+        $authorizationHtml = '';
+        $returnStatus = (string) ($return['status'] ?? '');
+        $hasRma = ! empty($return['rma_number']);
+        $authorizationIsActive =
+            $hasRma
+            && $returnStatus === 'approved';
+
+        if ($authorizationIsActive) {
+            $authorizationHtml = '
+                <div style="padding:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;margin:22px 0;">
+                    <strong>RMA:</strong>
+                    '
+                    . htmlspecialchars(
+                        (string) $return['rma_number']
+                    )
+                    . '
+                    <br>
+
+                    <strong>Authorization Expires:</strong>
+                    '
+                    . htmlspecialchars(
+                        (string) (
+                            $return[
+                                'authorization_expires_at'
+                            ]
+                            ?? 'Not specified'
+                        )
+                    )
+                    . '
+                    <br>
+
+                    <strong>Return Shipping:</strong>
+                    '
+                    . htmlspecialchars(
+                        (
+                            $return[
+                                'return_shipping_responsibility_snapshot'
+                            ]
+                            ?? 'customer'
+                        ) === 'store'
+                            ? 'Store responsibility'
+                            : 'Customer responsibility'
+                    )
+                    . '
+
+                    '
+                    . (
+                        ! empty(
+                            $return[
+                                'return_address_snapshot'
+                            ]
+                        )
+                            ? '<p><strong>Return Address:</strong><br>'
+                                . nl2br(
+                                    htmlspecialchars(
+                                        (string) $return[
+                                            'return_address_snapshot'
+                                        ]
+                                    )
+                                )
+                                . '</p>'
+                            : ''
+                    )
+                    . '
+
+                    '
+                    . (
+                        ! empty(
+                            $return[
+                                'return_instructions_snapshot'
+                            ]
+                        )
+                            ? '<p><strong>Instructions:</strong><br>'
+                                . nl2br(
+                                    htmlspecialchars(
+                                        (string) $return[
+                                            'return_instructions_snapshot'
+                                        ]
+                                    )
+                                )
+                                . '</p>'
+                            : ''
+                    )
+                    . '
+                </div>
+            ';
+        } elseif (
+            $hasRma
+            && in_array(
+                $returnStatus,
+                ['received', 'completed'],
+                true
+            )
+        ) {
+            $authorizationHtml = '
+                <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin:22px 0;">
+                    <strong>RMA Reference:</strong> '
+                    . htmlspecialchars(
+                        (string) $return['rma_number']
+                    )
+                    . '
+                </div>
+            ';
+        }
+
+        $resolutionHtml =
+            $this->resolutionHtml($return);
+
+        return '
+            <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6;max-width:680px;margin:0 auto;">
+                <h1 style="margin-bottom:8px;">
+                    '
+                    . htmlspecialchars($message['heading'])
+                    . '
+                </h1>
+
+                <p>
+                    Hi '
+                    . htmlspecialchars(
+                        $customerName ?: 'there'
+                    )
+                    . ',
+                </p>
+
+                <p>
+                    '
+                    . htmlspecialchars($message['message'])
+                    . '
+                </p>
+
+                <div style="padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin:22px 0;">
+                    <strong>Return:</strong>
+                    '
+                    . htmlspecialchars(
+                        (string) $return['return_number']
+                    )
+                    . '
+                    <br>
+
+                    <strong>Order:</strong>
+                    '
+                    . htmlspecialchars(
+                        (string) $return['order_number']
+                    )
+                    . '
+                    <br>
+
+                    <strong>Status:</strong>
+                    '
+                    . htmlspecialchars(
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                (string) $return['status']
+                            )
+                        )
+                    )
+                    . '
+                    <br>
+
+                    <strong>Refund Status:</strong>
+                    '
+                    . htmlspecialchars(
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                (string) (
+                                    $return['refund_status']
+                                    ?? 'none'
+                                )
+                            )
+                        )
+                    )
+                    . '
+                </div>
+
+                '
+                . $authorizationHtml
+                . $resolutionHtml
+                . '
+
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="padding:10px;border-bottom:2px solid #111827;text-align:left;">
+                                Item
+                            </th>
+                            <th style="padding:10px;border-bottom:2px solid #111827;text-align:right;">
+                                Qty
+                            </th>
+                            <th style="padding:10px;border-bottom:2px solid #111827;text-align:right;">
+                                Approved
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        '
+                        . $itemRows
+                        . '
+                    </tbody>
+                </table>
+
+                <p style="margin-top:24px;">
+                    <a
+                        href="'
+                        . htmlspecialchars($trackingUrl)
+                        . '"
+                        style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:bold;"
+                    >
+                        Track Return
+                    </a>
+                </p>
+
+                <p style="color:#64748b;font-size:13px;">
+                    For privacy, the tracking page will also require the email address used for the order.
+                </p>
+
+                <p>
+                    Thank you,<br>
+                    '
+                    . htmlspecialchars(
+                        (string) $return['store_name']
+                    )
+                    . '
+                </p>
+            </div>
+        ';
+    }
+
+    private function buildText(
+        array $return,
+        array $items,
+        array $message,
+        string $trackingUrl
+    ): string {
+        $lines = [];
+
+        foreach ($items as $item) {
+            $lines[] =
+                '- '
+                . (
+                    $item['product_name']
+                    ?? 'Product'
+                )
+                . ' | Qty '
+                . (int) (
+                    $item['quantity_requested']
+                    ?? 0
+                )
+                . ' | Approved $'
+                . number_format(
+                    (float) (
+                        $item['approved_refund_amount']
+                        ?? $item[
+                            'requested_refund_amount'
+                        ]
+                        ?? 0
+                    ),
+                    2
+                );
+        }
+
+        $authorizationText = '';
+        $returnStatus = (string) ($return['status'] ?? '');
+        $hasRma = ! empty($return['rma_number']);
+        $authorizationIsActive =
+            $hasRma
+            && $returnStatus === 'approved';
+
+        if ($authorizationIsActive) {
+            $authorizationText =
+                "\nRMA: "
+                . $return['rma_number']
+                . "\nAuthorization Expires: "
+                . (
+                    $return[
+                        'authorization_expires_at'
+                    ]
+                    ?? 'Not specified'
+                )
+                . "\nReturn Shipping: "
+                . (
+                    (
+                        $return[
+                            'return_shipping_responsibility_snapshot'
+                        ]
+                        ?? 'customer'
+                    ) === 'store'
+                        ? 'Store responsibility'
+                        : 'Customer responsibility'
+                )
+                . (
+                    ! empty(
+                        $return[
+                            'return_address_snapshot'
+                        ]
+                    )
+                        ? "\nReturn Address:\n"
+                            . $return[
+                                'return_address_snapshot'
+                            ]
+                        : ''
+                )
+                . (
+                    ! empty(
+                        $return[
+                            'return_instructions_snapshot'
+                        ]
+                    )
+                        ? "\nInstructions:\n"
+                            . $return[
+                                'return_instructions_snapshot'
+                            ]
+                        : ''
+                )
+                . "\n";
+        } elseif (
+            $hasRma
+            && in_array(
+                $returnStatus,
+                ['received', 'completed'],
+                true
+            )
+        ) {
+            $authorizationText =
+                "\nRMA Reference: "
+                . $return['rma_number']
+                . "\n";
+        }
+
+        $resolutionText =
+            $this->resolutionText($return);
+
+        return $message['heading']
+            . "\n\n"
+            . $message['message']
+            . "\n\n"
+            . 'Return: '
+            . $return['return_number']
+            . "\n"
+            . 'Order: '
+            . $return['order_number']
+            . "\n"
+            . 'Status: '
+            . ucwords(
+                str_replace(
+                    '_',
+                    ' ',
+                    (string) $return['status']
+                )
+            )
+            . "\n"
+            . 'Refund Status: '
+            . ucwords(
+                str_replace(
+                    '_',
+                    ' ',
+                    (string) (
+                        $return['refund_status']
+                        ?? 'none'
+                    )
+                )
+            )
+            . $authorizationText
+            . $resolutionText
+            . "\n"
+            . "Items:\n"
+            . implode("\n", $lines)
+            . "\n\n"
+            . 'Track your return: '
+            . $trackingUrl
+            . "\n\n"
+            . 'The tracking page also requires the email address used for the order.'
+            . "\n";
+    }
+}

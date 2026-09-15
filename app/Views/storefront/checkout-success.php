@@ -5,7 +5,7 @@ declare(strict_types=1);
 $escape = static function (mixed $value): string {
     return htmlspecialchars(
         (string) $value,
-        ENT_QUOTES,
+        ENT_QUOTES | ENT_SUBSTITUTE,
         'UTF-8'
     );
 };
@@ -21,29 +21,6 @@ $customerName = trim(
 );
 ?>
 
-<style>
-.payment-confirmation-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 38px;
-    padding: 0 14px;
-    border-radius: 999px;
-    background: #dcfce7;
-    color: #166534;
-    font-weight: 800;
-    text-transform: capitalize;
-}
-
-.confirmation-payment-note {
-    margin-top: 18px;
-    padding: 14px 16px;
-    border-radius: 14px;
-    background: #f0fdf4;
-    color: #166534;
-    line-height: 1.55;
-}
-</style>
 
 <section class="storefront-product-header">
     <div class="storefront-container storefront-topbar">
@@ -63,6 +40,33 @@ $customerName = trim(
     </div>
 </section>
 
+<div class="checkout-progress-wrap">
+    <div class="storefront-container">
+        <ol
+            class="checkout-progress"
+            aria-label="Checkout progress"
+        >
+            <li class="is-complete">
+                <span>1</span>
+                Cart
+            </li>
+
+            <li class="is-complete">
+                <span>2</span>
+                Checkout
+            </li>
+
+            <li
+                class="is-current is-complete"
+                aria-current="step"
+            >
+                <span>3</span>
+                Complete
+            </li>
+        </ol>
+    </div>
+</div>
+
 <main class="storefront-container storefront-section">
     <?php if (! empty($success)): ?>
         <div class="storefront-alert success">
@@ -76,6 +80,8 @@ $customerName = trim(
         <p class="eyebrow dark-eyebrow">
             Payment approved
         </p>
+
+        <div class="checkout-success-icon" aria-hidden="true">✓</div>
 
         <h1>Thank You</h1>
 
@@ -158,18 +164,6 @@ $customerName = trim(
                         <?= $escape(
                             $order[
                                 'payment_method_name'
-                            ] ?? '—'
-                        ) ?>
-                    </td>
-                </tr>
-
-                <tr>
-                    <th>Transaction</th>
-
-                    <td>
-                        #<?= $escape(
-                            $order[
-                                'payment_transaction_id'
                             ] ?? '—'
                         ) ?>
                     </td>
@@ -398,6 +392,13 @@ $customerName = trim(
                 class="storefront-cart-button checkout-link-button"
             >
                 Track This Order
+            </a>
+
+            <a
+                href="/store/<?= $escape($store['slug']) ?>"
+                class="checkout-secondary-action"
+            >
+                Continue Shopping
             </a>
         </div>
     </section>

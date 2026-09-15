@@ -1,0 +1,48 @@
+ALASNE PHASE 6B.1 — STRIPE FOUNDATION
+
+NEW:
+app/Controllers/StripeWebhookController.php
+app/Repositories/StripeWebhookEventRepository.php
+app/Services/Payments/Stripe/StripeClientFactory.php
+app/Services/Payments/Stripe/StripePaymentIntentService.php
+config/stripe_routes.php
+database/migrations/000054_create_stripe_webhook_events.php
+scripts/stripe-check.php
+STRIPE-INTEGRATION.md
+
+REPLACE:
+.env.example
+public/index.php
+
+DEPENDENCY:
+Run this after extracting the package:
+    composer require stripe/stripe-php
+
+THEN:
+    php alasne migrate
+
+DO NOT paste real Stripe keys into chat or commit them to Git.
+Put TEST keys only in your local .env:
+    STRIPE_PUBLISHABLE_KEY=pk_test_...
+    STRIPE_SECRET_KEY=sk_test_...
+    STRIPE_WEBHOOK_SECRET=whsec_...
+
+VALIDATE:
+    php -l app\Controllers\StripeWebhookController.php
+    php -l app\Repositories\StripeWebhookEventRepository.php
+    php -l app\Services\Payments\Stripe\StripeClientFactory.php
+    php -l app\Services\Payments\Stripe\StripePaymentIntentService.php
+    php -l app\Services\Payments\Stripe\StripeWebhookService.php
+    php -l config\stripe_routes.php
+    php -l database\migrations\000054_create_stripe_webhook_events.php
+    php -l scripts\stripe-check.php
+    php -l public\index.php
+    composer validate --no-check-publish
+    composer check-platform-reqs
+    git diff --check
+    git status --short
+
+After putting TEST keys into .env:
+    php scripts\stripe-check.php
+
+DO NOT COMMIT YET. Phase 6B.1 must pass webhook and regression acceptance first.

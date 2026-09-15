@@ -5,22 +5,53 @@ declare(strict_types=1);
 use App\Controllers\Admin\CategoryController;
 use App\Controllers\Admin\CustomerController;
 use App\Controllers\Admin\DashboardController;
+use App\Controllers\Admin\DropshippingOperationsController;
 use App\Controllers\Admin\EmailOutboxController;
 use App\Controllers\Admin\InventoryController;
 use App\Controllers\Admin\OrderController;
 use App\Controllers\Admin\PaymentMethodController;
+use App\Controllers\Admin\CarrierIntegrationController;
+use App\Controllers\Admin\ReturnController;
+use App\Controllers\Admin\ReturnPolicyController;
 use App\Controllers\Admin\PermissionController;
 use App\Controllers\Admin\ProductController;
+use App\Controllers\Admin\ProductionReadinessController;
+use App\Controllers\Admin\MultiStoreAutomationController;
+use App\Controllers\Admin\MissionControlNavigationController;
+use App\Controllers\Admin\ReportsKpiController;
+use App\Controllers\Admin\MissionControlAlertController;
+use App\Controllers\Admin\MissionControlBriefingController;
+use App\Controllers\Admin\MissionControlScheduledOperationController;
+use App\Controllers\Admin\MissionControlEmailQueueController;
+use App\Controllers\Admin\MissionControlEmailDeliveryController;
+use App\Controllers\Admin\MissionControlNotificationTemplateController;
+use App\Controllers\Admin\MissionControlNotificationDispatchController;
+use App\Controllers\Admin\MissionControlNotificationAutomationController;
+use App\Controllers\Admin\MissionControlNotificationEventBridgeController;
+use App\Controllers\Admin\ProductSourcingController;
+use App\Controllers\Admin\ProductSupplierController;
+use App\Controllers\Admin\PurchaseOrderController;
 use App\Controllers\Admin\RoleController;
 use App\Controllers\Admin\ShippingMethodController;
 use App\Controllers\Admin\TaxRuleController;
 use App\Controllers\Admin\StoreController;
+use App\Controllers\Admin\StoreCreditController;
+use App\Controllers\Admin\SupplierController;
+use App\Controllers\Admin\SupplierPerformanceController;
+use App\Controllers\Admin\TrackingReconciliationController;
+use App\Controllers\Admin\SupplierIntegrationController;
+use App\Controllers\Admin\SupplierSubmissionController;
 use App\Controllers\Admin\UserController;
 use App\Controllers\AuthController;
+use App\Controllers\CarrierWebhookController;
 use App\Controllers\CartController;
 use App\Controllers\CheckoutController;
+use App\Controllers\CustomerReturnController;
+use App\Controllers\CustomerAccountController;
 use App\Controllers\HomeController;
 use App\Controllers\OrderTrackingController;
+use App\Controllers\ReturnPolicyPageController;
+use App\Controllers\ReturnTrackingController;
 use App\Controllers\StorefrontController;
 
 $router = $app->router;
@@ -29,12 +60,180 @@ $router->get('/login', [AuthController::class, 'showLogin']);
 $router->post('/login', [AuthController::class, 'login']);
 $router->get('/logout', [AuthController::class, 'logout']);
 
+
+$router->post(
+    '/webhooks/carriers/easypost/{store_id}',
+    [CarrierWebhookController::class, 'easyPost']
+);
+
 $router->get('/', [HomeController::class, 'index']);
 
 $router
-    ->get('/admin', [DashboardController::class, 'index'])
+    ->get('/admin', [MissionControlNavigationController::class, 'index'])
     ->middleware('auth')
     ->middleware('permission:mission_control.view');
+
+$router
+    ->get('/admin/dashboard', [DashboardController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get('/admin/legacy-dashboard', [DashboardController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/dropshipping',
+        [DropshippingOperationsController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/dropshipping/export',
+        [DropshippingOperationsController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/production-readiness',
+        [ProductionReadinessController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/production-readiness/run',
+        [ProductionReadinessController::class, 'run']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/production-readiness/export',
+        [ProductionReadinessController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/production-readiness/runs/{run_id}',
+        [ProductionReadinessController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation',
+        [TrackingReconciliationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/tracking-reconciliation/upload',
+        [TrackingReconciliationController::class, 'upload']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation/template',
+        [TrackingReconciliationController::class, 'template']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation/queue/export',
+        [TrackingReconciliationController::class, 'exportQueue']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/tracking-reconciliation/runs/{run_id}',
+        [TrackingReconciliationController::class, 'run']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-performance',
+        [SupplierPerformanceController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-performance/export',
+        [SupplierPerformanceController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/supplier-performance/{supplier_id}/review',
+        [SupplierPerformanceController::class, 'review']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-performance/{supplier_id}',
+        [SupplierPerformanceController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/product-sourcing',
+        [ProductSourcingController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/product-sourcing/export',
+        [ProductSourcingController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/product-sourcing/rules',
+        [ProductSourcingController::class, 'saveRules']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/product-sourcing/reviews/{supplier_product_id}',
+        [ProductSourcingController::class, 'review']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
 
 $router
     ->get('/admin/users/{id}/edit', [UserController::class, 'edit'])
@@ -268,6 +467,110 @@ $router
     ->middleware('auth')
     ->middleware('permission:stores.manage');
 
+
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/carrier-integration',
+        [CarrierIntegrationController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/carrier-integration',
+        [CarrierIntegrationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/stores/{store_id}/return-policy',
+        [ReturnPolicyController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/stores/{store_id}/return-policy',
+        [ReturnPolicyController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get('/admin/suppliers', [SupplierController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/suppliers/create', [SupplierController::class, 'create'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/suppliers', [SupplierController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/suppliers/{supplier_id}/integration',
+        [SupplierIntegrationController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/suppliers/{supplier_id}/integration',
+        [SupplierIntegrationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/suppliers/{supplier_id}/integration/import',
+        [SupplierIntegrationController::class, 'importCsv']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/suppliers/{supplier_id}/integration/template',
+        [SupplierIntegrationController::class, 'template']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/suppliers/{supplier_id}/integration/sync-runs/{run_id}',
+        [SupplierIntegrationController::class, 'syncRun']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/suppliers/{id}/edit', [SupplierController::class, 'edit'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post('/admin/suppliers/{id}', [SupplierController::class, 'update'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get('/admin/suppliers/{id}', [SupplierController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
 $router
     ->get('/admin/stores/{id}/edit', [StoreController::class, 'edit'])
     ->middleware('auth')
@@ -295,6 +598,30 @@ $router
 
 $router
     ->post('/admin/products', [ProductController::class, 'store'])
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->get(
+        '/admin/products/{product_id}/suppliers',
+        [ProductSupplierController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/products/{product_id}/suppliers',
+        [ProductSupplierController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:products.manage');
+
+$router
+    ->post(
+        '/admin/products/{product_id}/suppliers/{id}/delete',
+        [ProductSupplierController::class, 'destroy']
+    )
     ->middleware('auth')
     ->middleware('permission:products.manage');
 
@@ -344,6 +671,122 @@ $router
     ->middleware('permission:customers.manage');
 
 $router
+    ->get(
+        '/admin/customers/{customer_id}/store-credit',
+        [StoreCreditController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:customers.manage');
+
+
+$router
+    ->get('/admin/returns', [ReturnController::class, 'index'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/orders/{order_id}/returns/create',
+        [ReturnController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{order_id}/returns',
+        [ReturnController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+
+$router
+    ->post(
+        '/admin/returns/{id}/carrier-rates',
+        [ReturnController::class, 'requestCarrierRates']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/carrier-rates/purchase',
+        [ReturnController::class, 'purchaseCarrierRate']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/shipping',
+        [ReturnController::class, 'saveShipping']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/shipping/status',
+        [ReturnController::class, 'updateShippingStatus']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/returns/{id}/shipping-label',
+        [ReturnController::class, 'shippingLabel']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/returns/{id}/authorization',
+        [ReturnController::class, 'authorization']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get('/admin/returns/{id}', [ReturnController::class, 'show'])
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/approve',
+        [ReturnController::class, 'approve']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/receive',
+        [ReturnController::class, 'receive']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/complete',
+        [ReturnController::class, 'complete']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/returns/{id}/cancel',
+        [ReturnController::class, 'cancel']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
     ->get('/admin/orders', [OrderController::class, 'index'])
     ->middleware('auth')
     ->middleware('permission:orders.manage');
@@ -375,6 +818,94 @@ $router
     ->get(
         '/admin/orders/{id}/invoice',
         [OrderController::class, 'invoice']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/orders/{order_id}/dropship',
+        [PurchaseOrderController::class, 'orderOverview']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{order_id}/dropship/route',
+        [PurchaseOrderController::class, 'routeOrder']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/orders/{order_id}/dropship/exceptions/{id}/resolve',
+        [PurchaseOrderController::class, 'resolveException']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-submissions',
+        [SupplierSubmissionController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/purchase-orders/{purchase_order_id}/submission/prepare',
+        [SupplierSubmissionController::class, 'prepare']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-submissions/{id}/export',
+        [SupplierSubmissionController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/supplier-submissions/{id}/status',
+        [SupplierSubmissionController::class, 'updateStatus']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/supplier-submissions/{id}',
+        [SupplierSubmissionController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/purchase-orders',
+        [PurchaseOrderController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/purchase-orders/{id}',
+        [PurchaseOrderController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->get(
+        '/admin/purchase-orders/{id}',
+        [PurchaseOrderController::class, 'show']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');
@@ -475,6 +1006,46 @@ $router
     ->middleware('permission:orders.manage');
 
 $router->get(
+    '/store/{store_slug}/account',
+    [CustomerAccountController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/account/link',
+    [CustomerAccountController::class, 'requestLink']
+);
+
+$router->get(
+    '/store/{store_slug}/account/session/{token}',
+    [CustomerAccountController::class, 'session']
+);
+
+$router->get(
+    '/store/{store_slug}/account/dashboard',
+    [CustomerAccountController::class, 'dashboard']
+);
+
+$router->get(
+    '/store/{store_slug}/account/orders/{order_id}',
+    [CustomerAccountController::class, 'order']
+);
+
+$router->get(
+    '/store/{store_slug}/account/store-credit',
+    [CustomerAccountController::class, 'storeCredit']
+);
+
+$router->post(
+    '/store/{store_slug}/account/profile',
+    [CustomerAccountController::class, 'updateProfile']
+);
+
+$router->post(
+    '/store/{store_slug}/account/logout',
+    [CustomerAccountController::class, 'logout']
+);
+
+$router->get(
     '/store/{store_slug}/product/{product_slug}',
     [StorefrontController::class, 'product']
 );
@@ -510,6 +1081,11 @@ $router->get(
 );
 
 $router->post(
+    '/store/{store_slug}/checkout/store-credit',
+    [CheckoutController::class, 'storeCreditBalance']
+);
+
+$router->post(
     '/store/{store_slug}/checkout',
     [CheckoutController::class, 'store']
 );
@@ -517,6 +1093,54 @@ $router->post(
 $router->get(
     '/store/{store_slug}/checkout/success',
     [CheckoutController::class, 'success']
+);
+
+
+
+
+$router->get(
+    '/store/{store_slug}/returns/policy',
+    [ReturnPolicyPageController::class, 'show']
+);
+
+$router->get(
+    '/store/{store_slug}/returns/request',
+    [CustomerReturnController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/request/lookup',
+    [CustomerReturnController::class, 'lookup']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/request',
+    [CustomerReturnController::class, 'store']
+);
+
+$router->get(
+    '/store/{store_slug}/returns/request/success/{token}',
+    [CustomerReturnController::class, 'success']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/shipping-label',
+    [ReturnTrackingController::class, 'shippingLabel']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/authorization',
+    [ReturnTrackingController::class, 'authorization']
+);
+
+$router->get(
+    '/store/{store_slug}/returns/track',
+    [ReturnTrackingController::class, 'show']
+);
+
+$router->post(
+    '/store/{store_slug}/returns/track',
+    [ReturnTrackingController::class, 'lookup']
 );
 
 $router->get(
@@ -539,4 +1163,461 @@ $router->get(
     [StorefrontController::class, 'show']
 );
 
+$router
+    ->get(
+        '/admin/multi-store-automation',
+        [MultiStoreAutomationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/export',
+        [MultiStoreAutomationController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/audit',
+        [MultiStoreAutomationController::class, 'saveAudit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/catalog-candidates/refresh',
+        [MultiStoreAutomationController::class, 'refreshCandidates']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/catalog-candidates/{candidate_id}',
+        [MultiStoreAutomationController::class, 'reviewCandidate']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/runs/{run_id}/export',
+        [MultiStoreAutomationController::class, 'exportRun']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/runs/{run_id}',
+        [MultiStoreAutomationController::class, 'run']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->post(
+        '/admin/multi-store-automation/{store_id}/profile',
+        [MultiStoreAutomationController::class, 'saveProfile']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+$router
+    ->get(
+        '/admin/multi-store-automation/{store_id}',
+        [MultiStoreAutomationController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:stores.manage');
+
+
+$router
+    ->get(
+        '/admin/mission-control',
+        [MissionControlNavigationController::class, 'index']
+    )
+    ->middleware('auth');
+
+$router
+    ->get(
+        '/admin/workflows',
+        [MissionControlNavigationController::class, 'index']
+    )
+    ->middleware('auth');
+
+$router
+    ->get(
+        '/admin/navigation',
+        [MissionControlNavigationController::class, 'index']
+    )
+    ->middleware('auth');
+
+
+$router
+    ->get(
+        '/admin/reports',
+        [ReportsKpiController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/reports/export',
+        [ReportsKpiController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/alerts',
+        [MissionControlAlertController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/alerts/export',
+        [MissionControlAlertController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/scan',
+        [MissionControlAlertController::class, 'scan']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/alerts/rules/create',
+        [MissionControlAlertController::class, 'ruleForm']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/rules',
+        [MissionControlAlertController::class, 'saveRule']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/rules/{rule_id}/delete',
+        [MissionControlAlertController::class, 'deleteRule']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/alerts/rules/{rule_id}',
+        [MissionControlAlertController::class, 'ruleForm']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/rules/{rule_id}',
+        [MissionControlAlertController::class, 'saveRule']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/alerts/{alert_id}',
+        [MissionControlAlertController::class, 'updateAlert']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/briefings',
+        [MissionControlBriefingController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/briefings/export',
+        [MissionControlBriefingController::class, 'exportPreview']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/briefings',
+        [MissionControlBriefingController::class, 'save']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/briefings/{briefing_id}/export',
+        [MissionControlBriefingController::class, 'exportSaved']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/briefings/{briefing_id}/delete',
+        [MissionControlBriefingController::class, 'delete']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/briefings/{briefing_id}',
+        [MissionControlBriefingController::class, 'show']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/scheduled-operations',
+        [MissionControlScheduledOperationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/scheduled-operations/export',
+        [MissionControlScheduledOperationController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/scheduled-operations/run-due',
+        [MissionControlScheduledOperationController::class, 'runDue']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/scheduled-operations/{task_id}/run',
+        [MissionControlScheduledOperationController::class, 'runTask']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/scheduled-operations/{task_id}',
+        [MissionControlScheduledOperationController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/scheduled-operations/{task_id}',
+        [MissionControlScheduledOperationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/email-queue',
+        [MissionControlEmailQueueController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/email-queue/export',
+        [MissionControlEmailQueueController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/email-queue/process',
+        [MissionControlEmailQueueController::class, 'process']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/email-delivery',
+        [MissionControlEmailDeliveryController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/email-delivery/test',
+        [MissionControlEmailDeliveryController::class, 'test']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-templates',
+        [MissionControlNotificationTemplateController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-templates/export',
+        [MissionControlNotificationTemplateController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-templates',
+        [MissionControlNotificationTemplateController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-templates/{template_id}/preview',
+        [MissionControlNotificationTemplateController::class, 'preview']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-templates/{template_id}',
+        [MissionControlNotificationTemplateController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-templates/{template_id}',
+        [MissionControlNotificationTemplateController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-dispatches',
+        [MissionControlNotificationDispatchController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-dispatches/export',
+        [MissionControlNotificationDispatchController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-dispatches/queue',
+        [MissionControlNotificationDispatchController::class, 'queue']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-automations',
+        [MissionControlNotificationAutomationController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-automations/export',
+        [MissionControlNotificationAutomationController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-automations/{rule_id}/test',
+        [MissionControlNotificationAutomationController::class, 'test']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-automations/{rule_id}',
+        [MissionControlNotificationAutomationController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+
+$router
+    ->get(
+        '/admin/notification-event-bridge',
+        [MissionControlNotificationEventBridgeController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->get(
+        '/admin/notification-event-bridge/export',
+        [MissionControlNotificationEventBridgeController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
+$router
+    ->post(
+        '/admin/notification-event-bridge/simulate',
+        [MissionControlNotificationEventBridgeController::class, 'simulate']
+    )
+    ->middleware('auth')
+    ->middleware('permission:mission_control.view');
+
 return $router;
+

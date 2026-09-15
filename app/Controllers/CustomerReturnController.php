@@ -1,0 +1,1027 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controllers;
+
+use App\Core\Controller;
+use App\Core\Request;
+use App\Repositories\ReturnPolicyRepository;
+use App\Repositories\ReturnRepository;
+use App\Services\Auth\CsrfService;
+use App\Services\Mail\EmailOutboxSender;
+use App\Services\Returns\ReturnNotificationService;
+use App\Services\Notifications\ReturnRequestedNotificationPublisher;
+use App\Services\Notifications\RmaApprovedNotificationPublisher;
+use App\Services\Returns\ReturnService;
+
+class CustomerReturnController extends Controller
+{
+    private const ACCESS_TTL_SECONDS = 1800;
+    private const SUCCESS_TTL_SECONDS = 900;
+    private const LOOKUP_WINDOW_SECONDS = 900;
+    private const LOOKUP_LIMIT = 10;
+
+    public function __construct(
+        private ReturnRepository $returns,
+        private ReturnPolicyRepository $policies,
+        private ReturnService $returnService,
+        private ReturnNotificationService $notifications,
+        private EmailOutboxSender $emailSender,
+        private CsrfService $csrf
+    ) {
+        parent::__construct();
+    }
+
+    public function show(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $policy = $this->policies->forStore(
+            (int) $store['id']
+        );
+
+        $accountOrderId = (int) $this->request->input(
+            'order_id',
+            0
+        );
+
+        if ($accountOrderId <= 0) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                '',
+                '',
+                null
+            );
+        }
+
+        $portalSession = $this->customerPortalSessionForStore(
+            (string) $store['slug']
+        );
+
+        if (! $portalSession) {
+            $_SESSION['customer_account_error'] =
+                'Your secure account session expired. Sign in again to request a return.';
+
+            $this->response->redirect(
+                '/store/'
+                . rawurlencode((string) $store['slug'])
+                . '/account'
+            );
+
+            return null;
+        }
+
+        $order = $this->returns->orderForReturn(
+            $accountOrderId
+        );
+
+        if (
+            ! $order
+            || (int) ($order['store_id'] ?? 0)
+                !== (int) $store['id']
+            || (int) ($order['customer_id'] ?? 0)
+                !== (int) ($portalSession['customer_id'] ?? 0)
+        ) {
+            http_response_code(404);
+
+            return '404 - Order not found';
+        }
+
+        $customerEmail = strtolower(
+            trim(
+                (string) (
+                    $order['customer_email']
+                    ?? ''
+                )
+            )
+        );
+
+        $orderNumber = (string) (
+            $order['order_number']
+            ?? ''
+        );
+
+        if ((int) $policy['is_enabled'] !== 1) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'This store is not currently accepting customer return requests.',
+                [],
+                $order
+            );
+        }
+
+        if (
+            (float) (
+                $order['verified_amount_paid']
+                ?? $order['amount_paid']
+                ?? 0
+            ) <= 0
+        ) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'This order is not eligible for a return because no completed payment was found.',
+                [],
+                $order
+            );
+        }
+
+        $eligibility =
+            $this->policies->customerEligibility(
+                $order
+            );
+
+        if (! $eligibility['eligible']) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                $orderNumber,
+                $customerEmail,
+                (string) $eligibility['message'],
+                [],
+                $order
+            );
+        }
+
+        $items =
+            $this->returns->availableItemsForOrder(
+                (int) $order['id']
+            );
+
+        $hasReturnableItems = false;
+
+        foreach ($items as $item) {
+            if (
+                (int) (
+                    $item[
+                        'quantity_available_to_return'
+                    ]
+                    ?? 0
+                ) > 0
+            ) {
+                $hasReturnableItems = true;
+                break;
+            }
+        }
+
+        if (! $hasReturnableItems) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                $orderNumber,
+                $customerEmail,
+                'No items from this order remain available for return.',
+                [],
+                $order
+            );
+        }
+
+        $accessToken = $this->createAccessToken(
+            $store,
+            $order,
+            $customerEmail,
+            (int) $order['id']
+        );
+
+        $this->csrf->regenerate();
+
+        return $this->renderRequestPage(
+            $store,
+            $policy,
+            $order,
+            $items,
+            $accessToken,
+            $eligibility,
+            $orderNumber,
+            $customerEmail,
+            null,
+            [],
+            $order
+        );
+    }
+
+    public function lookup(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $policy = $this->policies->forStore(
+            (int) $store['id']
+        );
+
+        $orderNumber = strtoupper(
+            trim(
+                (string) $this->request->input(
+                    'order_number'
+                )
+            )
+        );
+
+        $customerEmail = strtolower(
+            trim(
+                (string) $this->request->input(
+                    'email'
+                )
+            )
+        );
+
+        if ((int) $policy['is_enabled'] !== 1) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'This store is not currently accepting customer return requests.'
+            );
+        }
+
+        if (! $this->validateCsrf()) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'Security token expired. Please try again.'
+            );
+        }
+
+        if (! $this->consumeLookupAttempt(
+            (string) $store['slug']
+        )) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'Too many lookup attempts were made. Please try again later.'
+            );
+        }
+
+        if (
+            $orderNumber === ''
+            || ! filter_var(
+                $customerEmail,
+                FILTER_VALIDATE_EMAIL
+            )
+        ) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'Enter the order number and the email address used for the order.'
+            );
+        }
+
+        $order =
+            $this->returns
+                ->findOrderForCustomerCredentials(
+                    (string) $store['slug'],
+                    $orderNumber,
+                    $customerEmail
+                );
+
+        if (
+            ! $order
+            || (float) (
+                $order['verified_amount_paid']
+                ?? $order['amount_paid']
+                ?? 0
+            ) <= 0
+        ) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                $orderNumber,
+                $customerEmail,
+                'We could not find an eligible paid order with those details.'
+            );
+        }
+
+        $eligibility =
+            $this->policies
+                ->customerEligibility($order);
+
+        if (! $eligibility['eligible']) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                $orderNumber,
+                $customerEmail,
+                (string) $eligibility['message']
+            );
+        }
+
+        $items =
+            $this->returns->availableItemsForOrder(
+                (int) $order['id']
+            );
+
+        $hasReturnableItems = false;
+
+        foreach ($items as $item) {
+            if (
+                (int) $item[
+                    'quantity_available_to_return'
+                ] > 0
+            ) {
+                $hasReturnableItems = true;
+                break;
+            }
+        }
+
+        if (! $hasReturnableItems) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                $orderNumber,
+                $customerEmail,
+                'No items from this order remain available for return.'
+            );
+        }
+
+        $accessToken = $this->createAccessToken(
+            $store,
+            $order,
+            $customerEmail
+        );
+
+        $this->csrf->regenerate();
+
+        return $this->renderRequestPage(
+            $store,
+            $policy,
+            $order,
+            $items,
+            $accessToken,
+            $eligibility,
+            $orderNumber,
+            $customerEmail,
+            null
+        );
+    }
+
+    public function store(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $policy = $this->policies->forStore(
+            (int) $store['id']
+        );
+
+        if (! $this->validateCsrf()) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                '',
+                '',
+                'Security token expired. Start the order lookup again.'
+            );
+        }
+
+        $this->cleanupSessionTokens();
+
+        $accessToken = trim(
+            (string) $this->request->input(
+                'access_token'
+            )
+        );
+
+        $access =
+            $_SESSION['customer_return_access'][
+                $accessToken
+            ]
+            ?? null;
+
+        if (
+            ! is_array($access)
+            || ! hash_equals(
+                (string) $access['store_slug'],
+                (string) $store['slug']
+            )
+        ) {
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                '',
+                '',
+                'Your secure return session expired. Look up the order again.'
+            );
+        }
+
+        $order =
+            $this->returns
+                ->findOrderForCustomerCredentials(
+                    (string) $store['slug'],
+                    (string) $access['order_number'],
+                    (string) $access['customer_email']
+                );
+
+        if (! $order) {
+            unset(
+                $_SESSION['customer_return_access'][
+                    $accessToken
+                ]
+            );
+
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                null,
+                '',
+                '',
+                'The order could not be verified again. Start a new lookup.'
+            );
+        }
+
+        $quantities = $this->request->input(
+            'quantities',
+            []
+        );
+
+        if (! is_array($quantities)) {
+            $quantities = [];
+        }
+
+        $reasonCode = strtolower(
+            trim(
+                (string) $this->request->input(
+                    'reason_code'
+                )
+            )
+        );
+
+        $reasonDetails = trim(
+            (string) $this->request->input(
+                'reason_details'
+            )
+        );
+
+        $customerNotes = trim(
+            (string) $this->request->input(
+                'customer_notes'
+            )
+        );
+
+        $eligibility =
+            $this->policies->customerEligibility(
+                $order,
+                $reasonCode
+            );
+
+        if (! $eligibility['eligible']) {
+            unset(
+                $_SESSION['customer_return_access'][
+                    $accessToken
+                ]
+            );
+
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                null,
+                [],
+                null,
+                $eligibility,
+                (string) $order['order_number'],
+                (string) $access['customer_email'],
+                (string) $eligibility['message'],
+                [],
+                $this->accountOrderFromAccess(
+                    $access,
+                    $order
+                )
+            );
+        }
+
+        try {
+            $returnId = $this->returnService->create(
+                (int) $order['id'],
+                [
+                    'request_source' => 'customer',
+                    'reason_code' => $reasonCode,
+                    'reason_details' => $reasonDetails,
+                    'customer_notes' => $customerNotes,
+                    'internal_notes' => null,
+                ],
+                $quantities
+            );
+
+            unset(
+                $_SESSION['customer_return_access'][
+                    $accessToken
+                ]
+            );
+
+            $notificationWarning = null;
+
+            /*
+             * The return transaction has already committed inside
+             * ReturnService::create() before control reaches here.
+             *
+             * Every successful customer submission now emits the
+             * real return.requested Event Bridge event.
+             */
+            try {
+                $publisher =
+                    new ReturnRequestedNotificationPublisher(
+                        $this->returns
+                    );
+
+                $publisher->publish(
+                    $returnId
+                );
+            } catch (\Throwable $notificationException) {
+                error_log(
+                    '[Alasne return.requested notification] '
+                    . $notificationException->getMessage()
+                );
+
+                $notificationWarning =
+                    'The request was created, but its confirmation notification could not be queued immediately.';
+            }
+
+            /*
+             * If the store policy automatically approved the return,
+             * ReturnService::create() has already committed both the
+             * approved status and RMA authorization before control
+             * reaches this point.
+             *
+             * Publish rma.approved through the Event Bridge instead
+             * of the legacy approved-return email.
+             */
+            try {
+                $createdReturn =
+                    $this->returns->find(
+                        $returnId
+                    );
+
+                if (
+                    ($createdReturn['status'] ?? '')
+                    === 'approved'
+                    && trim(
+                        (string) (
+                            $createdReturn['rma_number']
+                            ?? ''
+                        )
+                    ) !== ''
+                ) {
+                    $rmaPublisher =
+                        new RmaApprovedNotificationPublisher(
+                            $this->returns
+                        );
+
+                    $rmaPublisher->publish(
+                        $returnId,
+                        'customer_policy_auto_approval'
+                    );
+                }
+            } catch (\Throwable $approvalNotificationException) {
+                error_log(
+                    '[Alasne rma.approved notification] '
+                    . $approvalNotificationException->getMessage()
+                );
+
+                $notificationWarning =
+                    $notificationWarning
+                    ?? 'The request was created and approved, but its return authorization notification could not be queued immediately.';
+            }
+
+            $successToken = bin2hex(
+                random_bytes(32)
+            );
+
+            $_SESSION['customer_return_success'][
+                $successToken
+            ] = [
+                'store_slug' =>
+                    (string) $store['slug'],
+                'return_id' => $returnId,
+                'notification_warning' =>
+                    $notificationWarning,
+                'expires_at' =>
+                    time()
+                    + self::SUCCESS_TTL_SECONDS,
+            ];
+
+            $this->csrf->regenerate();
+
+            $this->response->redirect(
+                '/store/'
+                . rawurlencode(
+                    (string) $store['slug']
+                )
+                . '/returns/request/success/'
+                . rawurlencode($successToken)
+            );
+        } catch (\Throwable $exception) {
+            $items =
+                $this->returns->availableItemsForOrder(
+                    (int) $order['id']
+                );
+
+            return $this->renderRequestPage(
+                $store,
+                $policy,
+                $order,
+                $items,
+                $accessToken,
+                $eligibility,
+                (string) $order['order_number'],
+                (string) $access['customer_email'],
+                $exception->getMessage()
+                    ?: 'The return request could not be created.',
+                [
+                    'quantities' => $quantities,
+                    'reason_code' => $reasonCode,
+                    'reason_details' => $reasonDetails,
+                    'customer_notes' => $customerNotes,
+                ],
+                $this->accountOrderFromAccess(
+                    $access,
+                    $order
+                )
+            );
+        }
+    }
+
+    public function success(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $this->cleanupSessionTokens();
+
+        $successToken = trim(
+            (string) $request->route('token')
+        );
+
+        $success =
+            $_SESSION['customer_return_success'][
+                $successToken
+            ]
+            ?? null;
+
+        if (
+            ! is_array($success)
+            || ! hash_equals(
+                (string) $success['store_slug'],
+                (string) $store['slug']
+            )
+        ) {
+            http_response_code(404);
+
+            return '404 - Return confirmation not found';
+        }
+
+        $return = $this->returns->find(
+            (int) $success['return_id']
+        );
+
+        if (! $return) {
+            http_response_code(404);
+
+            return '404 - Return not found';
+        }
+
+        return $this->view(
+            'storefront.customer-return-success',
+            [
+                'title' =>
+                    'Return Request Received | '
+                    . $store['name'],
+                'store' => $store,
+                'return' => $return,
+                'notification_warning' =>
+                    $success[
+                        'notification_warning'
+                    ]
+                    ?? null,
+                'tracking_url' =>
+                    '/store/'
+                    . rawurlencode(
+                        (string) $store['slug']
+                    )
+                    . '/returns/track?return_number='
+                    . rawurlencode(
+                        (string) $return[
+                            'return_number'
+                        ]
+                    ),
+            ],
+            'storefront'
+        );
+    }
+
+    private function renderRequestPage(
+        array $store,
+        array $policy,
+        ?array $order,
+        array $items,
+        ?string $accessToken,
+        ?array $eligibility,
+        string $orderNumber,
+        string $customerEmail,
+        ?string $error,
+        array $old = [],
+        ?array $accountOrder = null
+    ) {
+        return $this->view(
+            'storefront.customer-return-request',
+            [
+                'title' =>
+                    'Request a Return | '
+                    . $store['name'],
+                'store' => $store,
+                'policy' => $policy,
+                'order' => $order,
+                'items' => $items,
+                'access_token' => $accessToken,
+                'eligibility' => $eligibility,
+                'order_number' => $orderNumber,
+                'customer_email' => $customerEmail,
+                'account_order' => $accountOrder,
+                'csrf_token' =>
+                    $this->csrf->token(),
+                'error' => $error,
+                'old' => $old,
+            ],
+            'storefront'
+        );
+    }
+
+    private function createAccessToken(
+        array $store,
+        array $order,
+        string $customerEmail,
+        ?int $accountOrderId = null
+    ): string {
+        $this->cleanupSessionTokens();
+
+        $accessToken = bin2hex(
+            random_bytes(32)
+        );
+
+        $_SESSION['customer_return_access'][
+            $accessToken
+        ] = [
+            'store_slug' => (string) $store['slug'],
+            'order_number' =>
+                (string) $order['order_number'],
+            'customer_email' => $customerEmail,
+            'account_order_id' =>
+                $accountOrderId,
+            'expires_at' =>
+                time() + self::ACCESS_TTL_SECONDS,
+        ];
+
+        return $accessToken;
+    }
+
+    private function customerPortalSessionForStore(
+        string $storeSlug
+    ): ?array {
+        $session =
+            $_SESSION['customer_portal_access'][
+                $storeSlug
+            ]
+            ?? null;
+
+        if (! is_array($session)) {
+            return null;
+        }
+
+        if (
+            (int) ($session['expires'] ?? 0)
+            < time()
+        ) {
+            unset(
+                $_SESSION['customer_portal_access'][
+                    $storeSlug
+                ]
+            );
+
+            return null;
+        }
+
+        if (
+            (int) ($session['customer_id'] ?? 0)
+            <= 0
+        ) {
+            return null;
+        }
+
+        return $session;
+    }
+
+    private function accountOrderFromAccess(
+        array $access,
+        array $order
+    ): ?array {
+        $accountOrderId = (int) (
+            $access['account_order_id']
+            ?? 0
+        );
+
+        if (
+            $accountOrderId <= 0
+            || $accountOrderId
+                !== (int) ($order['id'] ?? 0)
+        ) {
+            return null;
+        }
+
+        return $order;
+    }
+
+    private function storeFromRequest(
+        Request $request
+    ): ?array {
+        $storeSlug = trim(
+            (string) (
+                $request->route('store_slug')
+                ?? $request->route('slug')
+                ?? ''
+            )
+        );
+
+        return $this->returns->storeBySlug(
+            $storeSlug
+        );
+    }
+
+    private function validateCsrf(): bool
+    {
+        return $this->csrf->validate(
+            (string) $this->request->input(
+                '_csrf_token'
+            )
+        );
+    }
+
+    private function consumeLookupAttempt(
+        string $storeSlug
+    ): bool {
+        $now = time();
+        $minimumTime =
+            $now - self::LOOKUP_WINDOW_SECONDS;
+
+        $attempts =
+            $_SESSION['customer_return_lookup_attempts'][
+                $storeSlug
+            ]
+            ?? [];
+
+        if (! is_array($attempts)) {
+            $attempts = [];
+        }
+
+        $attempts = array_values(
+            array_filter(
+                $attempts,
+                static fn (mixed $timestamp): bool =>
+                    (int) $timestamp >= $minimumTime
+            )
+        );
+
+        if (
+            count($attempts)
+            >= self::LOOKUP_LIMIT
+        ) {
+            $_SESSION[
+                'customer_return_lookup_attempts'
+            ][$storeSlug] = $attempts;
+
+            return false;
+        }
+
+        $attempts[] = $now;
+
+        $_SESSION[
+            'customer_return_lookup_attempts'
+        ][$storeSlug] = $attempts;
+
+        return true;
+    }
+
+    private function cleanupSessionTokens(): void
+    {
+        $now = time();
+
+        foreach (
+            [
+                'customer_return_access',
+                'customer_return_success',
+            ]
+            as $bucket
+        ) {
+            $records = $_SESSION[$bucket] ?? [];
+
+            if (! is_array($records)) {
+                $_SESSION[$bucket] = [];
+                continue;
+            }
+
+            foreach ($records as $token => $record) {
+                if (
+                    ! is_array($record)
+                    || (int) (
+                        $record['expires_at'] ?? 0
+                    ) < $now
+                ) {
+                    unset(
+                        $_SESSION[$bucket][$token]
+                    );
+                }
+            }
+        }
+    }
+}

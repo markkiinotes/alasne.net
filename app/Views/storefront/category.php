@@ -1,9 +1,9 @@
 <header class="storefront-product-header">
-    <div class="storefront-container">
+    <div class="storefront-container storefront-topbar">
         <a href="/store/<?= htmlspecialchars($store['slug']) ?>" class="back-link">
             ← Back to <?= htmlspecialchars($store['name']) ?>
         </a>
-		
+
 		<a href="/store/<?= htmlspecialchars($store['slug']) ?>/cart" class="cart-link">
 			Cart <?= (int) ($cartQuantity ?? 0) > 0 ? '(' . htmlspecialchars((string) $cartQuantity) . ')' : '' ?>
 		</a>
@@ -45,13 +45,3 @@
     </section>
 
 </main>
-
-<footer class="storefront-footer">
-    <div class="storefront-container">
-        <p>
-            &copy; <?= date('Y') ?>
-            <?= htmlspecialchars($store['name']) ?>.
-            Powered by Alasne.
-        </p>
-    </div>
-</footer>

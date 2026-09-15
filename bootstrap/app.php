@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Core\Application;
+use App\Support\HttpSecurity;
 
 define('BASE_PATH', dirname(__DIR__));
 
@@ -13,18 +14,20 @@ require BASE_PATH . '/app/Support/helpers.php';
 $dotenv = Dotenv\Dotenv::createUnsafeImmutable(BASE_PATH);
 $dotenv->load();
 
-date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'America/New_York');
+HttpSecurity::configureRuntime();
+HttpSecurity::applyResponseHeaders();
 
-session_name($_ENV['SESSION_NAME'] ?? 'ALASNESESSID');
+date_default_timezone_set(
+    $_ENV['APP_TIMEZONE'] ?? 'America/New_York'
+);
 
-session_set_cookie_params([
-    'lifetime' => 0,
-    'path' => '/',
-    'domain' => '',
-    'secure' => false,
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
+session_name(
+    $_ENV['SESSION_NAME'] ?? 'ALASNESESSID'
+);
+
+session_set_cookie_params(
+    HttpSecurity::sessionCookieParams()
+);
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
