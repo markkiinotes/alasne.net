@@ -287,10 +287,12 @@ foreach ($paymentMethods as $method) {
     <?php endif; ?>
 
     <div class="payment-method-notice">
-        Only the simulated test provider is installed.
-        It never sends card information or makes an external
-        payment request. Live providers will be added through
-        separate provider adapters.
+        Test Payment and Stripe are installed providers.
+        Stripe is currently
+        <strong><?= $stripeReady ? 'ready' : 'not ready' ?></strong>
+        in <?= $escape($stripeMode) ?> mode. Stripe activation
+        requires its publishable key, secret key, and webhook
+        signing secret.
     </div>
 
     <section class="payment-method-summary">
@@ -313,7 +315,9 @@ foreach ($paymentMethods as $method) {
         <article class="payment-method-stat">
             <span>Installed Providers</span>
 
-            <strong>1</strong>
+            <strong>
+                <?= $escape($supportedProviderCount) ?>
+            </strong>
         </article>
     </section>
 
@@ -343,7 +347,7 @@ foreach ($paymentMethods as $method) {
                         <tr>
                             <th>Method</th>
                             <th>Provider</th>
-                            <th>Default Result</th>
+                            <th>Provider Mode</th>
                             <th>Display Order</th>
                             <th>Status</th>
                             <th>Actions</th>
@@ -429,16 +433,27 @@ foreach ($paymentMethods as $method) {
                                 </td>
 
                                 <td>
-                                    <?= $escape(
-                                        ucwords(
-                                            str_replace(
-                                                '_',
-                                                ' ',
-                                                (string)
-                                                $defaultScenario
+                                    <?php if (
+                                        strtolower(
+                                            (string) (
+                                                $method['provider']
+                                                ?? ''
                                             )
-                                        )
-                                    ) ?>
+                                        ) === 'stripe'
+                                    ): ?>
+                                        <?= $escape($stripeMode) ?>
+                                    <?php else: ?>
+                                        <?= $escape(
+                                            ucwords(
+                                                str_replace(
+                                                    '_',
+                                                    ' ',
+                                                    (string)
+                                                    $defaultScenario
+                                                )
+                                            )
+                                        ) ?>
+                                    <?php endif; ?>
                                 </td>
 
                                 <td>

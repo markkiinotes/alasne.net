@@ -25,6 +25,13 @@ $defaultScenario = strtolower(
         ?? 'approved'
     )
 );
+
+$selectedProvider = strtolower(
+    (string) (
+        $old['provider']
+        ?? 'test'
+    )
+);
 ?>
 
 <style>
@@ -227,13 +234,14 @@ $defaultScenario = strtolower(
     <?php endif; ?>
 
     <section class="payment-form-help">
-        <h2>Development provider only</h2>
+        <h2>Installed payment providers</h2>
 
         <p>
-            This method uses the installed test adapter.
-            It does not collect card numbers or send money.
-            The customer can choose an approved, declined,
-            or provider-error result during development.
+            Test Payment simulates approved, declined, and provider-error
+            results. Stripe uses the configured Stripe account and the
+            storefront Payment Element. Stripe is currently
+            <strong><?= $stripeReady ? 'ready' : 'not ready' ?></strong>
+            in <?= $escape($stripeMode) ?> mode.
         </p>
     </section>
 
@@ -291,19 +299,36 @@ $defaultScenario = strtolower(
 
                 <div class="payment-form-group">
                     <label for="provider">
-                        Provider
+                        Provider *
                     </label>
 
-                    <input
+                    <select
                         id="provider"
-                        type="text"
-                        value="test"
-                        disabled
+                        name="provider"
+                        required
                     >
+                        <option
+                            value="test"
+                            <?= $selectedProvider === 'test'
+                                ? 'selected'
+                                : '' ?>
+                        >
+                            Test Payment
+                        </option>
+
+                        <option
+                            value="stripe"
+                            <?= $selectedProvider === 'stripe'
+                                ? 'selected'
+                                : '' ?>
+                        >
+                            Stripe
+                        </option>
+                    </select>
 
                     <small>
-                        Additional providers require a
-                        dedicated adapter.
+                        Stripe requires configured API keys and a
+                        webhook signing secret before activation.
                     </small>
                 </div>
 
@@ -363,7 +388,10 @@ $defaultScenario = strtolower(
                     ) ?></textarea>
                 </div>
 
-                <div class="payment-form-group">
+                <div
+                    class="payment-form-group"
+                    id="test-provider-options"
+                >
                     <label for="default_scenario">
                         Default Test Result
                     </label>
@@ -451,3 +479,40 @@ $defaultScenario = strtolower(
         </form>
     </section>
 </div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const provider = document.getElementById('provider');
+    const testOptions = document.getElementById(
+        'test-provider-options'
+    );
+    const scenario = document.getElementById(
+        'default_scenario'
+    );
+
+    const refreshProviderOptions = () => {
+        const isTest =
+            ! provider
+            || provider.value === 'test';
+
+        if (testOptions) {
+            testOptions.hidden = ! isTest;
+        }
+
+        if (scenario) {
+            scenario.required = isTest;
+            scenario.disabled = ! isTest;
+        }
+    };
+
+    if (provider) {
+        provider.addEventListener(
+            'change',
+            refreshProviderOptions
+        );
+    }
+
+    refreshProviderOptions();
+});
+</script>

@@ -48,6 +48,13 @@ $defaultScenario = strtolower(
 
 $isActive =
     (int) $value('is_active', 0) === 1;
+
+$provider = strtolower(
+    (string) (
+        $paymentMethod['provider']
+        ?? 'test'
+    )
+);
 ?>
 
 <style>
@@ -321,12 +328,14 @@ $isActive =
                     <input
                         id="provider"
                         type="text"
-                        value="<?= $escape(
-                            $paymentMethod[
-                                'provider'
-                            ] ?? 'test'
-                        ) ?>"
+                        value="<?= $escape($provider) ?>"
                         disabled
+                    >
+
+                    <input
+                        type="hidden"
+                        name="provider"
+                        value="<?= $escape($provider) ?>"
                     >
                 </div>
 
@@ -380,47 +389,72 @@ $isActive =
                     ) ?></textarea>
                 </div>
 
-                <div class="payment-form-group">
-                    <label for="default_scenario">
-                        Default Test Result
-                    </label>
+                <?php if ($provider === 'test'): ?>
+                    <div class="payment-form-group">
+                        <label for="default_scenario">
+                            Default Test Result
+                        </label>
 
-                    <select
-                        id="default_scenario"
-                        name="default_scenario"
-                        required
-                    >
-                        <option
-                            value="approved"
-                            <?= $defaultScenario
-                                === 'approved'
-                                    ? 'selected'
-                                    : '' ?>
+                        <select
+                            id="default_scenario"
+                            name="default_scenario"
+                            required
                         >
-                            Approved
-                        </option>
+                            <option
+                                value="approved"
+                                <?= $defaultScenario
+                                    === 'approved'
+                                        ? 'selected'
+                                        : '' ?>
+                            >
+                                Approved
+                            </option>
 
-                        <option
-                            value="declined"
-                            <?= $defaultScenario
-                                === 'declined'
-                                    ? 'selected'
-                                    : '' ?>
-                        >
-                            Declined
-                        </option>
+                            <option
+                                value="declined"
+                                <?= $defaultScenario
+                                    === 'declined'
+                                        ? 'selected'
+                                        : '' ?>
+                            >
+                                Declined
+                            </option>
 
-                        <option
-                            value="error"
-                            <?= $defaultScenario
-                                === 'error'
-                                    ? 'selected'
-                                    : '' ?>
-                        >
-                            Provider Error
-                        </option>
-                    </select>
-                </div>
+                            <option
+                                value="error"
+                                <?= $defaultScenario
+                                    === 'error'
+                                        ? 'selected'
+                                        : '' ?>
+                            >
+                                Provider Error
+                            </option>
+                        </select>
+                    </div>
+                <?php else: ?>
+                    <div class="payment-form-group">
+                        <label>Stripe Configuration</label>
+
+                        <div class="payment-form-check">
+                            <span>
+                                <strong>
+                                    <?= $stripeReady
+                                        ? 'Ready'
+                                        : 'Not Ready' ?>
+                                </strong>
+                                <br>
+
+                                <small>
+                                    Current Stripe mode:
+                                    <?= $escape($stripeMode) ?>.
+                                    Publishable key, secret key, and
+                                    webhook secret are required for
+                                    activation.
+                                </small>
+                            </span>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
                 <div class="payment-form-group">
                     <label class="payment-form-check">

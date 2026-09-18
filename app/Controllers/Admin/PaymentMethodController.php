@@ -9,6 +9,7 @@ use App\Core\Request;
 use App\Repositories\PaymentMethodRepository;
 use App\Repositories\StoreRepository;
 use App\Services\Auth\CsrfService;
+use App\Services\Payments\Stripe\StripeClientFactory;
 use RuntimeException;
 
 class PaymentMethodController extends Controller
@@ -16,6 +17,7 @@ class PaymentMethodController extends Controller
     public function __construct(
         private StoreRepository $stores,
         private PaymentMethodRepository $paymentMethods,
+        private StripeClientFactory $stripeClients,
         private CsrfService $csrf
     ) {
         parent::__construct();
@@ -59,6 +61,9 @@ class PaymentMethodController extends Controller
                     $this->csrf->token(),
                 'success' => $success,
                 'error' => $error,
+                'stripeReady' => $this->stripeReady(),
+                'stripeMode' => $this->stripeClients->mode(),
+                'supportedProviderCount' => 2,
             ],
             'admin'
         );
@@ -98,6 +103,8 @@ class PaymentMethodController extends Controller
                 'csrf_token' =>
                     $this->csrf->token(),
                 'error' => $error,
+                'stripeReady' => $this->stripeReady(),
+                'stripeMode' => $this->stripeClients->mode(),
             ],
             'admin'
         );
@@ -219,6 +226,8 @@ class PaymentMethodController extends Controller
                 'csrf_token' =>
                     $this->csrf->token(),
                 'error' => $error,
+                'stripeReady' => $this->stripeReady(),
+                'stripeMode' => $this->stripeClients->mode(),
             ],
             'admin'
         );
@@ -265,7 +274,12 @@ class PaymentMethodController extends Controller
             return;
         }
 
-        $data = $this->paymentMethodInput();
+        $data = $this->paymentMethodInput(
+            (string) (
+                $paymentMethod['provider']
+                ?? 'test'
+            )
+        );
 
         $_SESSION['payment_methods_old'] = $data;
 
@@ -350,13 +364,22 @@ class PaymentMethodController extends Controller
             return;
         }
 
-        if (
-            strtolower(
-                (string) $paymentMethod['provider']
-            ) !== 'test'
-        ) {
+        $provider = strtolower(
+            trim(
+                (string) (
+                    $paymentMethod['provider']
+                    ?? ''
+                )
+            )
+        );
+
+        if (! in_array(
+            $provider,
+            ['test', 'stripe'],
+            true
+        )) {
             $_SESSION['payment_methods_error'] =
-                'That payment provider is not installed and cannot be activated.';
+                'That payment provider is not supported.';
 
             $this->response->redirect(
                 '/admin/stores/'
@@ -370,6 +393,23 @@ class PaymentMethodController extends Controller
         $newActiveState =
             (int) $paymentMethod['is_active']
             !== 1;
+
+        if (
+            $newActiveState
+            && $provider === 'stripe'
+            && ! $this->stripeReady()
+        ) {
+            $_SESSION['payment_methods_error'] =
+                'Stripe cannot be activated until its publishable key, secret key, and webhook secret are configured.';
+
+            $this->response->redirect(
+                '/admin/stores/'
+                . $storeId
+                . '/payment-methods'
+            );
+
+            return;
+        }
 
         $this->paymentMethods->setActive(
             $paymentMethodId,
@@ -402,8 +442,9 @@ class PaymentMethodController extends Controller
         );
     }
 
-    private function paymentMethodInput(): array
-    {
+    private function paymentMethodInput(
+        ?string $existingProvider = null
+    ): array {
         $name = trim(
             (string) $this->request->input(
                 'name'
@@ -422,6 +463,18 @@ class PaymentMethodController extends Controller
             )
         );
 
+        $provider = strtolower(
+            trim(
+                (string) (
+                    $existingProvider
+                    ?? $this->request->input(
+                        'provider',
+                        'test'
+                    )
+                )
+            )
+        );
+
         $defaultScenario = strtolower(
             trim(
                 (string) $this->request->input(
@@ -431,6 +484,9 @@ class PaymentMethodController extends Controller
             )
         );
 
+        $isTestProvider =
+            $provider === 'test';
+
         return [
             'name' => $name,
             'code' => $this->normalizeCode(
@@ -438,7 +494,7 @@ class PaymentMethodController extends Controller
                     ? $submittedCode
                     : $name
             ),
-            'provider' => 'test',
+            'provider' => $provider,
             'description' => trim(
                 (string) $this->request->input(
                     'description'
@@ -449,7 +505,15 @@ class PaymentMethodController extends Controller
                     'instructions'
                 )
             ),
-            'is_test_mode' => 1,
+            'is_test_mode' =>
+                $isTestProvider
+                    ? 1
+                    : (
+                        $this->stripeClients->mode()
+                        === 'test'
+                            ? 1
+                            : 0
+                    ),
             'is_active' =>
                 $this->request->input(
                     'is_active'
@@ -462,10 +526,13 @@ class PaymentMethodController extends Controller
                     : '0',
             'default_scenario' =>
                 $defaultScenario,
-            'config_json' => [
-                'default_scenario' =>
-                    $defaultScenario,
-            ],
+            'config_json' =>
+                $isTestProvider
+                    ? [
+                        'default_scenario' =>
+                            $defaultScenario,
+                    ]
+                    : null,
         ];
     }
 
@@ -529,15 +596,62 @@ class PaymentMethodController extends Controller
             );
         }
 
+        $provider = strtolower(
+            trim(
+                (string) (
+                    $data['provider']
+                    ?? ''
+                )
+            )
+        );
+
         if (! in_array(
-            $data['default_scenario'],
-            ['approved', 'declined', 'error'],
+            $provider,
+            ['test', 'stripe'],
             true
         )) {
+            throw new RuntimeException(
+                'Select a supported payment provider.'
+            );
+        }
+
+        if (
+            $provider === 'test'
+            && ! in_array(
+                $data['default_scenario'],
+                ['approved', 'declined', 'error'],
+                true
+            )
+        ) {
             throw new RuntimeException(
                 'Select a valid default test scenario.'
             );
         }
+
+        if (
+            $provider === 'stripe'
+            && ! empty($data['is_active'])
+            && ! $this->stripeReady()
+        ) {
+            throw new RuntimeException(
+                'Stripe cannot be activated until its publishable key, secret key, and webhook secret are configured.'
+            );
+        }
+    }
+
+    private function stripeReady(): bool
+    {
+        return $this->stripeClients
+                ->isConfigured()
+            && $this->stripeClients
+                ->isPublishableKeyConfigured()
+            && $this->stripeClients
+                ->isWebhookConfigured()
+            && in_array(
+                $this->stripeClients->mode(),
+                ['test', 'live'],
+                true
+            );
     }
 
     private function normalizeCode(
