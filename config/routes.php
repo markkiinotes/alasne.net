@@ -1091,6 +1091,26 @@ $router->post(
 );
 
 $router->get(
+    '/store/{store_slug}/checkout/stripe',
+    [CheckoutController::class, 'stripePayment']
+);
+
+$router->get(
+    '/store/{store_slug}/checkout/stripe/return',
+    [CheckoutController::class, 'stripeReturn']
+);
+
+$router->get(
+    '/store/{store_slug}/checkout/processing',
+    [CheckoutController::class, 'stripeProcessing']
+);
+
+$router->get(
+    '/store/{store_slug}/checkout/stripe/status',
+    [CheckoutController::class, 'stripeStatus']
+);
+
+$router->get(
     '/store/{store_slug}/checkout/success',
     [CheckoutController::class, 'success']
 );

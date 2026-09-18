@@ -1,0 +1,66 @@
+ALASNE PHASE 6B.2B — STRIPE PAYMENT ELEMENT / BROWSER FLOW
+
+This slice adds the browser-facing Stripe payment flow on top of the
+accepted Phase 6B.2A asynchronous backend.
+
+REPLACE:
+  app/Controllers/CheckoutController.php
+  config/routes.php
+
+NEW:
+  app/Views/storefront/stripe-payment.php
+  app/Views/storefront/stripe-processing.php
+  PHASE-6B2B-INSTALL.txt
+
+NO DATABASE MIGRATION IS REQUIRED FOR THIS SLICE.
+
+DESIGN
+
+1. The existing checkout review/tax flow remains unchanged.
+2. Existing Test Payment and store-credit behavior remains unchanged.
+3. When the selected active payment provider is "stripe":
+   - CheckoutController calls StripeCheckoutService::prepare().
+   - The local order and payment transaction already exist before the
+     browser sees Stripe.
+   - The browser receives only the Stripe publishable key and client_secret.
+4. Stripe.js mounts the Payment Element on a dedicated payment page.
+5. stripe.confirmPayment() handles payment details directly with Stripe.
+6. Alasne does NOT mark the order paid from browser JavaScript.
+7. After browser confirmation, Alasne waits for the signed Stripe webhook.
+8. The processing page polls only Alasne's local order/payment status.
+9. When the webhook finalizer marks the order paid:
+   - the cart is cleared,
+   - checkout session state is cleared,
+   - the customer is redirected to the existing success page.
+10. Stripe payment details never pass through Alasne PHP.
+
+CURRENT LIMITATION
+
+Store credit cannot yet be combined with Stripe in this slice.
+That combination should be added only after the standalone Stripe flow
+has passed end-to-end acceptance testing.
+
+AFTER PULLING THIS COMMIT
+
+From:
+  C:\xampp\htdocs\alasne.net
+
+Run:
+
+  php -l app\Controllers\CheckoutController.php
+  php -l config\routes.php
+  php -l app\Views\storefront\stripe-payment.php
+  php -l app\Views\storefront\stripe-processing.php
+
+Then:
+
+  composer dump-autoload
+  git diff --check
+  git status -sb
+
+Before browser testing, ensure the store has an ACTIVE payment method
+whose provider value is exactly:
+
+  stripe
+
+The Stripe environment should remain TEST mode for acceptance testing.

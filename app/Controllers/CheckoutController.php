@@ -14,6 +14,8 @@ use App\Repositories\TaxRuleRepository;
 use App\Services\Auth\CsrfService;
 use App\Services\Checkout\CheckoutPaymentFailedException;
 use App\Services\Checkout\CheckoutService;
+use App\Services\Checkout\StripeCheckoutService;
+use App\Services\Payments\Stripe\StripeClientFactory;
 use PDO;
 use RuntimeException;
 
@@ -27,6 +29,8 @@ class CheckoutController extends Controller
         private StoreCreditRepository $storeCredits,
         private TaxRuleRepository $taxRules,
         private CheckoutService $checkout,
+        private StripeCheckoutService $stripeCheckout,
+        private StripeClientFactory $stripeClients,
         private CsrfService $csrf
     ) {
         parent::__construct();
@@ -268,6 +272,121 @@ class CheckoutController extends Controller
                 return;
             }
 
+            $paymentMethodId =
+                (int) (
+                    $customerData['payment_method_id']
+                    ?? 0
+                );
+
+            $paymentMethod = $paymentMethodId > 0
+                ? $this->paymentMethods
+                    ->findActiveForStore(
+                        $paymentMethodId,
+                        (int) $store['id']
+                    )
+                : null;
+
+            if (
+                $paymentMethod
+                && strtolower(
+                    trim(
+                        (string) (
+                            $paymentMethod['provider']
+                            ?? ''
+                        )
+                    )
+                ) === 'stripe'
+            ) {
+                if (
+                    ! empty(
+                        $customerData['apply_store_credit']
+                    )
+                    || (float) (
+                        $customerData[
+                            'store_credit_amount'
+                        ] ?? 0
+                    ) > 0
+                ) {
+                    throw new RuntimeException(
+                        'Store credit cannot yet be combined with Stripe checkout.'
+                    );
+                }
+
+                $stripeContext =
+                    $this->stripeCheckoutContext(
+                        $currentQuote,
+                        $customerData,
+                        $paymentMethodId
+                    );
+
+                if (
+                    (string) (
+                        $_SESSION[
+                            'stripe_checkout_context'
+                        ] ?? ''
+                    ) !== $stripeContext
+                    || empty(
+                        $_SESSION['stripe_checkout_key']
+                    )
+                ) {
+                    $_SESSION[
+                        'stripe_checkout_context'
+                    ] = $stripeContext;
+
+                    $_SESSION['stripe_checkout_key'] =
+                        bin2hex(
+                            random_bytes(32)
+                        );
+
+                    unset(
+                        $_SESSION['stripe_checkout']
+                    );
+                }
+
+                $prepared =
+                    $this->stripeCheckout->prepare(
+                        (int) $store['id'],
+                        $customerData,
+                        $cart,
+                        $paymentMethodId,
+                        (string) $_SESSION[
+                            'stripe_checkout_key'
+                        ]
+                    );
+
+                $_SESSION['stripe_checkout'] = [
+                    'store_id' =>
+                        (int) $store['id'],
+                    'order_id' =>
+                        (int) $prepared[
+                            'order_id'
+                        ],
+                    'payment_transaction_id' =>
+                        (int) $prepared[
+                            'payment_transaction_id'
+                        ],
+                    'payment_intent_id' =>
+                        (string) $prepared[
+                            'payment_intent_id'
+                        ],
+                    'client_secret' =>
+                        (string) $prepared[
+                            'client_secret'
+                        ],
+                ];
+
+                $_SESSION['checkout_order_id'] =
+                    (int) $prepared['order_id'];
+
+                $this->response->redirect(
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/stripe'
+                );
+
+                return;
+            }
+
             $orderId =
                 $this->checkout->createPendingOrder(
                     (int) $store['id'],
@@ -336,6 +455,387 @@ class CheckoutController extends Controller
 
             return;
         }
+    }
+
+
+    public function stripePayment(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $context = $this->stripeSessionContext(
+            (int) $store['id']
+        );
+
+        if (! $context) {
+            $_SESSION['checkout_error'] =
+                'Your Stripe payment session expired. Review checkout and try again.';
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout'
+            );
+
+            return;
+        }
+
+        $order = $this->stripeOrderForStore(
+            (int) $context['order_id'],
+            (int) $store['id']
+        );
+
+        if (! $order) {
+            $this->clearStripeCheckoutState();
+
+            $_SESSION['checkout_error'] =
+                'Unable to locate the Stripe order. Review checkout and try again.';
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout'
+            );
+
+            return;
+        }
+
+        if (
+            strtolower(
+                (string) (
+                    $order['payment_status']
+                    ?? ''
+                )
+            ) === 'paid'
+        ) {
+            $this->completeStripeCheckout(
+                $store,
+                (int) $order['id']
+            );
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout/success'
+            );
+
+            return;
+        }
+
+        if (
+            strtolower(
+                (string) (
+                    $order['status']
+                    ?? ''
+                )
+            ) === 'cancelled'
+        ) {
+            $this->clearStripeCheckoutState();
+
+            $_SESSION['checkout_error'] =
+                'That Stripe payment session was canceled. Review checkout to start again.';
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout'
+            );
+
+            return;
+        }
+
+        $publishableKey =
+            $this->stripeClients->publishableKey();
+
+        if ($publishableKey === '') {
+            throw new RuntimeException(
+                'Stripe publishable key is not configured.'
+            );
+        }
+
+        return $this->view(
+            'storefront.stripe-payment',
+            [
+                'title' =>
+                    'Secure Payment | '
+                    . $store['name'],
+                'store' => $store,
+                'order' => $order,
+                'publishableKey' =>
+                    $publishableKey,
+                'clientSecret' =>
+                    (string) $context[
+                        'client_secret'
+                    ],
+                'processingUrl' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/processing',
+                'returnUrl' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/stripe/return',
+            ],
+            'storefront'
+        );
+    }
+
+    public function stripeReturn(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $context = $this->stripeSessionContext(
+            (int) $store['id']
+        );
+
+        if (! $context) {
+            $_SESSION['checkout_error'] =
+                'Your Stripe payment session expired. Review checkout and try again.';
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout'
+            );
+
+            return;
+        }
+
+        $this->response->redirect(
+            '/store/'
+            . $store['slug']
+            . '/checkout/processing'
+        );
+    }
+
+    public function stripeProcessing(Request $request)
+    {
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            return '404 - Store not found';
+        }
+
+        $context = $this->stripeSessionContext(
+            (int) $store['id']
+        );
+
+        if (! $context) {
+            $_SESSION['checkout_error'] =
+                'Your Stripe payment session expired. Review checkout and try again.';
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout'
+            );
+
+            return;
+        }
+
+        $order = $this->stripeOrderForStore(
+            (int) $context['order_id'],
+            (int) $store['id']
+        );
+
+        if (! $order) {
+            $this->clearStripeCheckoutState();
+
+            $_SESSION['checkout_error'] =
+                'Unable to locate the Stripe order. Review checkout and try again.';
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout'
+            );
+
+            return;
+        }
+
+        if (
+            strtolower(
+                (string) (
+                    $order['payment_status']
+                    ?? ''
+                )
+            ) === 'paid'
+        ) {
+            $this->completeStripeCheckout(
+                $store,
+                (int) $order['id']
+            );
+
+            $this->response->redirect(
+                '/store/'
+                . $store['slug']
+                . '/checkout/success'
+            );
+
+            return;
+        }
+
+        return $this->view(
+            'storefront.stripe-processing',
+            [
+                'title' =>
+                    'Confirming Payment | '
+                    . $store['name'],
+                'store' => $store,
+                'order' => $order,
+                'statusUrl' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/stripe/status',
+                'paymentUrl' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/stripe',
+                'checkoutUrl' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout',
+            ],
+            'storefront'
+        );
+    }
+
+    public function stripeStatus(Request $request): void
+    {
+        header(
+            'Content-Type: application/json; charset=UTF-8'
+        );
+
+        $store = $this->storeFromRequest($request);
+
+        if (! $store) {
+            http_response_code(404);
+
+            echo json_encode([
+                'ok' => false,
+                'message' => 'Store not found.',
+            ]);
+
+            exit;
+        }
+
+        $context = $this->stripeSessionContext(
+            (int) $store['id']
+        );
+
+        if (! $context) {
+            http_response_code(403);
+
+            echo json_encode([
+                'ok' => false,
+                'message' =>
+                    'Stripe payment session expired.',
+            ]);
+
+            exit;
+        }
+
+        $order = $this->stripeOrderForStore(
+            (int) $context['order_id'],
+            (int) $store['id']
+        );
+
+        if (! $order) {
+            http_response_code(404);
+
+            echo json_encode([
+                'ok' => false,
+                'message' => 'Order not found.',
+            ]);
+
+            exit;
+        }
+
+        $paymentStatus = strtolower(
+            trim(
+                (string) (
+                    $order['payment_status']
+                    ?? ''
+                )
+            )
+        );
+
+        $orderStatus = strtolower(
+            trim(
+                (string) (
+                    $order['status']
+                    ?? ''
+                )
+            )
+        );
+
+        if ($paymentStatus === 'paid') {
+            $this->completeStripeCheckout(
+                $store,
+                (int) $order['id']
+            );
+
+            echo json_encode([
+                'ok' => true,
+                'state' => 'paid',
+                'redirect_url' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/success',
+            ]);
+
+            exit;
+        }
+
+        if (
+            $paymentStatus === 'failed'
+            || $orderStatus === 'cancelled'
+        ) {
+            echo json_encode([
+                'ok' => true,
+                'state' => 'failed',
+                'order_status' => $orderStatus,
+                'payment_status' =>
+                    $paymentStatus,
+                'message' =>
+                    $orderStatus === 'cancelled'
+                        ? 'The Stripe payment was canceled.'
+                        : 'Stripe did not approve the payment.',
+                'payment_url' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/stripe',
+                'checkout_url' =>
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout',
+            ]);
+
+            exit;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'state' => 'processing',
+            'order_status' => $orderStatus,
+            'payment_status' =>
+                $paymentStatus,
+        ]);
+
+        exit;
     }
 
 
@@ -1094,6 +1594,138 @@ class CheckoutController extends Controller
 
         return round($subtotal, 2);
     }
+
+    private function stripeCheckoutContext(
+        array $quote,
+        array $customerData,
+        int $paymentMethodId
+    ): string {
+        return hash(
+            'sha256',
+            json_encode(
+                [
+                    'quote' =>
+                        (string) (
+                            $quote['fingerprint']
+                            ?? ''
+                        ),
+                    'payment_method_id' =>
+                        $paymentMethodId,
+                    'email' => strtolower(
+                        trim(
+                            (string) (
+                                $customerData['email']
+                                ?? ''
+                            )
+                        )
+                    ),
+                ],
+                JSON_UNESCAPED_SLASHES
+            ) ?: ''
+        );
+    }
+
+    private function stripeSessionContext(
+        int $storeId
+    ): ?array {
+        $context =
+            $_SESSION['stripe_checkout']
+            ?? null;
+
+        if (! is_array($context)) {
+            return null;
+        }
+
+        if (
+            (int) (
+                $context['store_id']
+                ?? 0
+            ) !== $storeId
+            || (int) (
+                $context['order_id']
+                ?? 0
+            ) <= 0
+            || trim(
+                (string) (
+                    $context['client_secret']
+                    ?? ''
+                )
+            ) === ''
+        ) {
+            return null;
+        }
+
+        return $context;
+    }
+
+    private function stripeOrderForStore(
+        int $orderId,
+        int $storeId
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT
+                id,
+                order_number,
+                store_id,
+                status,
+                payment_status,
+                payment_provider,
+                payment_transaction_id,
+                payment_method_name,
+                currency,
+                grand_total,
+                amount_paid,
+                paid_at,
+                created_at
+            FROM orders
+            WHERE id = :order_id
+            AND store_id = :store_id
+            AND payment_provider = 'stripe'
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'order_id' => $orderId,
+            'store_id' => $storeId,
+        ]);
+
+        $order = $stmt->fetch();
+
+        return $order ?: null;
+    }
+
+    private function completeStripeCheckout(
+        array $store,
+        int $orderId
+    ): void {
+        $cartState = $this->cartState($store);
+
+        $this->clearCart($cartState);
+
+        unset(
+            $_SESSION['checkout_old'],
+            $_SESSION['checkout_quote'],
+            $_SESSION['stripe_checkout'],
+            $_SESSION['stripe_checkout_key'],
+            $_SESSION['stripe_checkout_context']
+        );
+
+        $_SESSION['checkout_order_id'] =
+            $orderId;
+
+        $_SESSION['checkout_success'] =
+            'Your Stripe payment was confirmed and your order has been placed successfully.';
+    }
+
+    private function clearStripeCheckoutState(): void
+    {
+        unset(
+            $_SESSION['stripe_checkout'],
+            $_SESSION['stripe_checkout_key'],
+            $_SESSION['stripe_checkout_context']
+        );
+    }
+
 
     private function paidOrderForStore(
         int $orderId,
