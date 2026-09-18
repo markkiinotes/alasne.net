@@ -1,58 +1,54 @@
 param(
-    [string] $StageRoot = 'C:\xampp\htdocs\alasne-stage-build',
-    [switch] $SkipComposer
+    [string]$StageRoot = 'C:\\xampp\\htdocs\\alasne-stage-build',
+    [switch]$SkipComposer
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$SourceRoot = [System.IO.Path]::GetFullPath(
-    (Join-Path $PSScriptRoot '..')
-)
+$SourceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$StageRoot = [System.IO.Path]::GetFullPath($StageRoot)
 
-$StageRoot = [System.IO.Path]::GetFullPath(
-    $StageRoot
-)
+$ProtectedDirectories = @('.git', 'vendor', 'storage')
+$ProtectedFiles = @('.env')
 
-$ProtectedDirectoryNames = @(
-    '.git',
-    'vendor',
-    'storage'
-)
+function Get-RelativeFilePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root,
 
-$ProtectedFileNames = @(
-    '.env'
-)
+        [Parameter(Mandatory = $true)]
+        [string]$FullName
+    )
+
+    $relative = $FullName.Substring($Root.Length)
+    return $relative.TrimStart([char[]]'\\/')
+}
 
 function Test-ProtectedRelativePath {
     param(
         [Parameter(Mandatory = $true)]
-        [string] $RelativePath
+        [string]$RelativePath
     )
 
-    $normalized = $RelativePath.Replace('/', '\')
+    $normalized = $RelativePath.Replace('/', '\\')
 
-    foreach ($directoryName in $ProtectedDirectoryNames) {
-        if (
-            $normalized -eq $directoryName
-            -or $normalized.StartsWith(
-                $directoryName + '\',
-                [System.StringComparison]::OrdinalIgnoreCase
-            )
-        ) {
+    foreach ($directory in $ProtectedDirectories) {
+        if ($normalized -ieq $directory) {
+            return $true
+        }
+
+        $prefix = $directory + '\\'
+
+        if ($normalized.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $true
         }
     }
 
-    $leafName = Split-Path $normalized -Leaf
+    $leaf = Split-Path -Path $normalized -Leaf
 
-    foreach ($fileName in $ProtectedFileNames) {
-        if (
-            $leafName.Equals(
-                $fileName,
-                [System.StringComparison]::OrdinalIgnoreCase
-            )
-        ) {
+    foreach ($fileName in $ProtectedFiles) {
+        if ($leaf -ieq $fileName) {
             return $true
         }
     }
@@ -63,26 +59,18 @@ function Test-ProtectedRelativePath {
 function Get-ComparableFiles {
     param(
         [Parameter(Mandatory = $true)]
-        [string] $Root
+        [string]$Root
     )
 
     $files = @{}
 
-    Get-ChildItem -LiteralPath $Root -Recurse -File |
-        ForEach-Object {
-            $relativePath = $_.FullName
-                .Substring($Root.Length)
-                .TrimStart('\', '/')
+    Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object {
+        $relativePath = Get-RelativeFilePath -Root $Root -FullName $_.FullName
 
-            if (
-                -not (
-                    Test-ProtectedRelativePath
-                        -RelativePath $relativePath
-                )
-            ) {
-                $files[$relativePath] = $_.FullName
-            }
+        if (-not (Test-ProtectedRelativePath -RelativePath $relativePath)) {
+            $files[$relativePath] = $_.FullName
         }
+    }
 
     return $files
 }
@@ -99,23 +87,18 @@ if (-not (Test-Path -LiteralPath $SourceRoot -PathType Container)) {
 }
 
 if (-not (Test-Path -LiteralPath $StageRoot -PathType Container)) {
-    New-Item -ItemType Directory -Path $StageRoot -Force |
-        Out-Null
+    New-Item -ItemType Directory -Path $StageRoot -Force | Out-Null
 }
 
-$stageEnv = Join-Path $StageRoot '.env'
+$StageEnv = Join-Path $StageRoot '.env'
 
-if (-not (Test-Path -LiteralPath $stageEnv -PathType Leaf)) {
-    throw (
-        'Staging .env is missing. Create the staging environment file ' +
-        'before building so environment-specific secrets are never copied ' +
-        'from development.'
-    )
+if (-not (Test-Path -LiteralPath $StageEnv -PathType Leaf)) {
+    throw ('Staging .env is missing. Create the staging environment file before building so development secrets are never copied into staging.')
 }
 
 Write-Host 'Synchronizing application source...'
 
-$robocopyArguments = @(
+$RoboCopyArguments = @(
     $SourceRoot,
     $StageRoot,
     '/E',
@@ -131,25 +114,18 @@ $robocopyArguments = @(
     '.env'
 )
 
-& robocopy @robocopyArguments
-$robocopyExitCode = $LASTEXITCODE
+& robocopy @RoboCopyArguments
+$RoboCopyExitCode = $LASTEXITCODE
 
-if ($robocopyExitCode -ge 8) {
-    throw (
-        'Robocopy failed with exit code ' +
-        $robocopyExitCode +
-        '.'
-    )
+if ($RoboCopyExitCode -ge 8) {
+    throw ('Robocopy failed with exit code ' + $RoboCopyExitCode + '.')
 }
 
 if (-not $SkipComposer) {
-    $composerCommand = Get-Command composer -ErrorAction SilentlyContinue
+    $ComposerCommand = Get-Command composer -ErrorAction SilentlyContinue
 
-    if ($null -eq $composerCommand) {
-        throw (
-            'Composer is not available on PATH. Install Composer or rerun ' +
-            'this script with -SkipComposer.'
-        )
+    if ($null -eq $ComposerCommand) {
+        throw 'Composer is not available on PATH. Install Composer or rerun this script with -SkipComposer.'
     }
 
     Write-Host ''
@@ -161,21 +137,13 @@ if (-not $SkipComposer) {
         & composer install --no-dev --optimize-autoloader --no-interaction
 
         if ($LASTEXITCODE -ne 0) {
-            throw (
-                'Composer install failed with exit code ' +
-                $LASTEXITCODE +
-                '.'
-            )
+            throw ('Composer install failed with exit code ' + $LASTEXITCODE + '.')
         }
 
         & composer check-platform-reqs
 
         if ($LASTEXITCODE -ne 0) {
-            throw (
-                'Composer platform requirement check failed with exit code ' +
-                $LASTEXITCODE +
-                '.'
-            )
+            throw ('Composer platform requirement check failed with exit code ' + $LASTEXITCODE + '.')
         }
     }
     finally {
@@ -186,61 +154,35 @@ if (-not $SkipComposer) {
 Write-Host ''
 Write-Host 'Verifying source-tree parity...'
 
-$sourceFiles = Get-ComparableFiles -Root $SourceRoot
-$stageFiles = Get-ComparableFiles -Root $StageRoot
+$SourceFiles = Get-ComparableFiles -Root $SourceRoot
+$StageFiles = Get-ComparableFiles -Root $StageRoot
+$Problems = New-Object System.Collections.ArrayList
 
-$problems = New-Object System.Collections.Generic.List[object]
-
-foreach ($relativePath in $sourceFiles.Keys) {
-    if (-not $stageFiles.ContainsKey($relativePath)) {
-        $problems.Add(
-            [PSCustomObject]@{
-                Status = 'MISSING IN STAGE'
-                File = $relativePath
-            }
-        )
-
+foreach ($RelativePath in $SourceFiles.Keys) {
+    if (-not $StageFiles.ContainsKey($RelativePath)) {
+        [void]$Problems.Add([PSCustomObject]@{ Status = 'MISSING IN STAGE'; File = $RelativePath })
         continue
     }
 
-    $sourceHash = (
-        Get-FileHash -LiteralPath $sourceFiles[$relativePath]
-    ).Hash
+    $SourceHash = (Get-FileHash -LiteralPath $SourceFiles[$RelativePath]).Hash
+    $StageHash = (Get-FileHash -LiteralPath $StageFiles[$RelativePath]).Hash
 
-    $stageHash = (
-        Get-FileHash -LiteralPath $stageFiles[$relativePath]
-    ).Hash
-
-    if ($sourceHash -ne $stageHash) {
-        $problems.Add(
-            [PSCustomObject]@{
-                Status = 'DIFFERENT'
-                File = $relativePath
-            }
-        )
+    if ($SourceHash -ne $StageHash) {
+        [void]$Problems.Add([PSCustomObject]@{ Status = 'DIFFERENT'; File = $RelativePath })
     }
 }
 
-foreach ($relativePath in $stageFiles.Keys) {
-    if (-not $sourceFiles.ContainsKey($relativePath)) {
-        $problems.Add(
-            [PSCustomObject]@{
-                Status = 'ONLY IN STAGE'
-                File = $relativePath
-            }
-        )
+foreach ($RelativePath in $StageFiles.Keys) {
+    if (-not $SourceFiles.ContainsKey($RelativePath)) {
+        [void]$Problems.Add([PSCustomObject]@{ Status = 'ONLY IN STAGE'; File = $RelativePath })
     }
 }
 
-if ($problems.Count -gt 0) {
+if ($Problems.Count -gt 0) {
     Write-Host ''
     Write-Host 'Stage build verification FAILED.'
     Write-Host 'The staging tree contains source differences that require review.'
-
-    $problems |
-        Sort-Object Status, File |
-        Format-Table -AutoSize
-
+    $Problems | Sort-Object Status, File | Format-Table -AutoSize
     exit 2
 }
 
