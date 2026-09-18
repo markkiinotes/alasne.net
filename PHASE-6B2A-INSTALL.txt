@@ -1,0 +1,65 @@
+ALASNE PHASE 6B.2A — STRIPE ASYNCHRONOUS BACKEND
+
+This package contains COMPLETE files.
+
+NEW:
+  app/Services/Checkout/StripeCheckoutService.php
+  app/Services/Payments/Stripe/StripePaymentFinalizer.php
+
+REPLACE:
+  app/Repositories/PaymentTransactionRepository.php
+  app/Repositories/StripeWebhookEventRepository.php
+  app/Services/Payments/Stripe/StripeWebhookService.php
+
+NO DATABASE MIGRATION IS REQUIRED FOR THIS SLICE.
+
+The existing payment_transactions.provider_transaction_id column stores
+the Stripe PaymentIntent ID (pi_...). The existing provider/provider ID
+index supports webhook lookup.
+
+WHAT THIS SLICE DOES
+
+1. Creates the local order and pending payment transaction first.
+2. Commits the Alasne database transaction BEFORE the Stripe API call.
+3. Creates/resumes one Stripe PaymentIntent using idempotency keys.
+4. Stores the PaymentIntent ID on the local payment transaction.
+5. Returns only the Stripe client_secret required by Stripe.js.
+6. Uses signed webhooks as the authoritative payment finalizer.
+7. Uses database row locks so inventory can only decrement once.
+8. Rejects amount/currency/order mismatches.
+9. Never downgrades an already-paid order from an out-of-order failure event.
+10. Makes notification replay safe through Alasne Event Bridge idempotency.
+11. Allows stale "processing" webhook rows to be reclaimed after five minutes.
+
+IMPORTANT
+
+This is the BACKEND slice only.
+Do not expect the existing checkout page to show the Stripe Payment Element yet.
+The existing Test Payment provider remains unchanged.
+
+INSTALL FROM PROJECT ROOT
+
+  cd C:\xampp\htdocs\alasne.net
+
+Extract this ZIP into the project root and allow replacement of the
+three existing files listed above.
+
+Then run:
+
+  php -l app\Services\Checkout\StripeCheckoutService.php
+  php -l app\Services\Payments\Stripe\StripePaymentFinalizer.php
+  php -l app\Repositories\PaymentTransactionRepository.php
+  php -l app\Repositories\StripeWebhookEventRepository.php
+  php -l app\Services\Payments\Stripe\StripeWebhookService.php
+
+Then:
+
+  composer dump-autoload
+  git diff --check
+  git status --short
+
+DO NOT COMMIT YET.
+
+The next acceptance step will verify dependency resolution and the
+existing Stripe webhook foundation before Phase 6B.2B adds the
+Payment Element/browser integration.

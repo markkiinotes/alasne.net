@@ -43,10 +43,14 @@ class StripeWebhookEventRepository
         $insert->execute([
             'event_id' => $event['event_id'],
             'event_type' => $event['event_type'],
-            'stripe_object_id' => $event['stripe_object_id'],
-            'stripe_account_id' => $event['stripe_account_id'],
-            'livemode' => $event['livemode'] ? 1 : 0,
-            'api_version' => $event['api_version'],
+            'stripe_object_id' =>
+                $event['stripe_object_id'],
+            'stripe_account_id' =>
+                $event['stripe_account_id'],
+            'livemode' =>
+                $event['livemode'] ? 1 : 0,
+            'api_version' =>
+                $event['api_version'],
         ]);
 
         if ($insert->rowCount() === 1) {
@@ -54,8 +58,15 @@ class StripeWebhookEventRepository
         }
 
         /*
-         * A previously failed event may be retried. Processed, ignored,
-         * or currently-processing events are treated as duplicates.
+         * Failed events can retry immediately.
+         *
+         * A processing event can also be reclaimed after five
+         * minutes. This protects the webhook pipeline from a PHP
+         * process dying after the business transaction committed
+         * but before the event row was marked processed.
+         *
+         * Fresh processing rows remain duplicates so simultaneous
+         * Stripe deliveries do not execute the finalizer twice.
          */
         $retry = $this->db->prepare("
             UPDATE stripe_webhook_events
@@ -65,7 +76,17 @@ class StripeWebhookEventRepository
                 last_error = NULL,
                 updated_at = NOW()
             WHERE event_id = :event_id
-            AND status = 'failed'
+            AND (
+                status = 'failed'
+                OR (
+                    status = 'processing'
+                    AND updated_at
+                        <= DATE_SUB(
+                            NOW(),
+                            INTERVAL 5 MINUTE
+                        )
+                )
+            )
         ");
 
         $retry->execute([
@@ -75,21 +96,35 @@ class StripeWebhookEventRepository
         return $retry->rowCount() === 1;
     }
 
-    public function markProcessed(string $eventId): void
-    {
-        $this->finish($eventId, 'processed', null);
+    public function markProcessed(
+        string $eventId
+    ): void {
+        $this->finish(
+            $eventId,
+            'processed',
+            null
+        );
     }
 
-    public function markIgnored(string $eventId): void
-    {
-        $this->finish($eventId, 'ignored', null);
+    public function markIgnored(
+        string $eventId
+    ): void {
+        $this->finish(
+            $eventId,
+            'ignored',
+            null
+        );
     }
 
     public function markFailed(
         string $eventId,
         string $error
     ): void {
-        $this->finish($eventId, 'failed', $error);
+        $this->finish(
+            $eventId,
+            'failed',
+            $error
+        );
     }
 
     private function finish(
@@ -103,7 +138,8 @@ class StripeWebhookEventRepository
                 status = :status,
                 last_error = :last_error,
                 processed_at = CASE
-                    WHEN :processed = 1 THEN NOW()
+                    WHEN :processed = 1
+                    THEN NOW()
                     ELSE processed_at
                 END,
                 updated_at = NOW()

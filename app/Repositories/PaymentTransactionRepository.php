@@ -160,6 +160,98 @@ class PaymentTransactionRepository
         return $transaction ?: null;
     }
 
+    public function findByProviderTransactionId(
+        string $provider,
+        string $providerTransactionId
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT *
+            FROM payment_transactions
+            WHERE provider = :provider
+            AND provider_transaction_id =
+                :provider_transaction_id
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'provider' => strtolower(
+                trim($provider)
+            ),
+            'provider_transaction_id' =>
+                trim($providerTransactionId),
+        ]);
+
+        $transaction = $stmt->fetch();
+
+        return $transaction ?: null;
+    }
+
+    public function findForUpdateByProviderTransactionId(
+        string $provider,
+        string $providerTransactionId
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT *
+            FROM payment_transactions
+            WHERE provider = :provider
+            AND provider_transaction_id =
+                :provider_transaction_id
+            ORDER BY id DESC
+            LIMIT 1
+            FOR UPDATE
+        ");
+
+        $stmt->execute([
+            'provider' => strtolower(
+                trim($provider)
+            ),
+            'provider_transaction_id' =>
+                trim($providerTransactionId),
+        ]);
+
+        $transaction = $stmt->fetch();
+
+        return $transaction ?: null;
+    }
+
+    public function attachProviderTransaction(
+        int $transactionId,
+        string $providerTransactionId,
+        array $response = []
+    ): bool {
+        $providerTransactionId = trim(
+            $providerTransactionId
+        );
+
+        if ($providerTransactionId === '') {
+            throw new RuntimeException(
+                'Provider transaction ID is required.'
+            );
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE payment_transactions
+            SET
+                provider_transaction_id =
+                    :provider_transaction_id,
+                response_json =
+                    :response_json,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $transactionId,
+            'provider_transaction_id' =>
+                $providerTransactionId,
+            'response_json' =>
+                $this->encodeJson($response),
+        ]);
+
+        return $stmt->rowCount() === 1;
+    }
+
     public function allForOrder(int $orderId): array
     {
         $stmt = $this->db->prepare("
@@ -258,7 +350,8 @@ class PaymentTransactionRepository
                 $data['response'] ?? null
             ),
             'failure_code' =>
-                $data['failure_code'] ?? 'payment_failed',
+                $data['failure_code']
+                ?? 'payment_failed',
             'failure_message' =>
                 $data['failure_message']
                 ?? 'The payment was not approved.',
@@ -271,7 +364,10 @@ class PaymentTransactionRepository
         int $chargeTransactionId,
         float $amount
     ): bool {
-        $amount = round(max(0, $amount), 2);
+        $amount = round(
+            max(0, $amount),
+            2
+        );
 
         if ($amount <= 0) {
             throw new RuntimeException(
@@ -316,7 +412,10 @@ class PaymentTransactionRepository
         if (is_string($value)) {
             json_decode($value, true);
 
-            if (json_last_error() === JSON_ERROR_NONE) {
+            if (
+                json_last_error()
+                === JSON_ERROR_NONE
+            ) {
                 return $value;
             }
         }
