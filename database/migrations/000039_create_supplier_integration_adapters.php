@@ -81,7 +81,7 @@ return new class($this->db) extends Migration
             CREATE TABLE IF NOT EXISTS supplier_sync_errors (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 sync_run_id BIGINT UNSIGNED NOT NULL,
-                row_number INT UNSIGNED NULL,
+                `row_number` INT UNSIGNED NULL,
                 supplier_sku VARCHAR(191) NULL,
                 error_code VARCHAR(80) NOT NULL,
                 message VARCHAR(1000) NOT NULL,
@@ -89,7 +89,7 @@ return new class($this->db) extends Migration
                 created_at DATETIME NOT NULL,
                 KEY idx_supplier_sync_errors_run (
                     sync_run_id,
-                    row_number,
+                    `row_number`,
                     id
                 )
             ) ENGINE=InnoDB

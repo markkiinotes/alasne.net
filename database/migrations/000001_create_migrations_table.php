@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 use App\Core\Migration;
 
-//return new class(app()->container->make(PDO::class)) extends Migration
-{
+return new class(
+    app()->container->make(\PDO::class)
+) extends Migration {
     public function up(): void
     {
         $this->db->exec("
@@ -20,6 +21,8 @@ use App\Core\Migration;
 
     public function down(): void
     {
-        $this->db->exec("DROP TABLE IF EXISTS migrations");
+        $this->db->exec(
+            "DROP TABLE IF EXISTS migrations"
+        );
     }
 };

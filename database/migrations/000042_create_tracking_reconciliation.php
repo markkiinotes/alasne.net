@@ -43,7 +43,7 @@ return new class($this->db) extends Migration
             CREATE TABLE IF NOT EXISTS tracking_reconciliation_rows (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 run_id BIGINT UNSIGNED NOT NULL,
-                row_number INT UNSIGNED NOT NULL,
+                `row_number` INT UNSIGNED NOT NULL,
                 status VARCHAR(30) NOT NULL,
                 match_strategy VARCHAR(60) NULL,
                 purchase_order_id BIGINT UNSIGNED NULL,
@@ -62,7 +62,7 @@ return new class($this->db) extends Migration
                 created_at DATETIME NOT NULL,
                 KEY idx_tracking_reconciliation_rows_run (
                     run_id,
-                    row_number,
+                    `row_number`,
                     id
                 ),
                 KEY idx_tracking_reconciliation_rows_status (
