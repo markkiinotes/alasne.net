@@ -1,5 +1,5 @@
 param(
-    [string]$StageRoot = 'C:\\xampp\\htdocs\\alasne-stage-build',
+    [string]$StageRoot = 'C:\xampp\htdocs\alasne-stage-build',
     [switch]$SkipComposer
 )
 
@@ -22,7 +22,7 @@ function Get-RelativeFilePath {
     )
 
     $relative = $FullName.Substring($Root.Length)
-    return $relative.TrimStart([char[]]'\\/')
+    return $relative.TrimStart([char[]]"\\/")
 }
 
 function Test-ProtectedRelativePath {
@@ -31,14 +31,14 @@ function Test-ProtectedRelativePath {
         [string]$RelativePath
     )
 
-    $normalized = $RelativePath.Replace('/', '\\')
+    $normalized = $RelativePath.Replace('/', '\')
 
     foreach ($directory in $ProtectedDirectories) {
         if ($normalized -ieq $directory) {
             return $true
         }
 
-        $prefix = $directory + '\\'
+        $prefix = $directory + '\'
 
         if ($normalized.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $true
