@@ -132,9 +132,17 @@ document.addEventListener('DOMContentLoaded', () => {
     );
 
     let attempts = 0;
-    const maximumAttempts = 60;
+    let stopped = false;
+    let slowModeAnnounced = false;
+
+    const fastPollingAttempts = 60;
+    const fastPollingDelay = 1500;
+    const retryPollingDelay = 2000;
+    const slowPollingDelay = 5000;
 
     const showFailure = (text) => {
+        stopped = true;
+
         title.textContent =
             'Payment Not Completed';
 
@@ -145,7 +153,38 @@ document.addEventListener('DOMContentLoaded', () => {
         actions.hidden = false;
     };
 
+    const announceSlowPolling = () => {
+        if (slowModeAnnounced) {
+            return;
+        }
+
+        slowModeAnnounced = true;
+
+        title.textContent =
+            'Still Confirming Payment';
+
+        message.textContent =
+            'Stripe confirmation is taking longer than expected. Alasne will keep checking automatically. You can leave this page open or refresh it safely.';
+    };
+
+    const scheduleNextCheck = (
+        delay
+    ) => {
+        if (stopped) {
+            return;
+        }
+
+        window.setTimeout(
+            checkStatus,
+            delay
+        );
+    };
+
     const checkStatus = async () => {
+        if (stopped) {
+            return;
+        }
+
         attempts += 1;
 
         try {
@@ -163,7 +202,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const result = await response.json();
 
-            if (! response.ok || ! result.ok) {
+            if (
+                ! response.ok
+                || ! result.ok
+            ) {
+                if (
+                    response.status === 403
+                    || response.status === 404
+                ) {
+                    showFailure(
+                        result.message
+                        || 'Unable to confirm this payment session.'
+                    );
+
+                    return;
+                }
+
                 throw new Error(
                     result.message
                     || 'Unable to confirm payment status.'
@@ -171,6 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (result.state === 'paid') {
+                stopped = true;
+
                 title.textContent =
                     'Payment Confirmed';
 
@@ -192,38 +248,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            if (attempts >= maximumAttempts) {
-                title.textContent =
-                    'Still Confirming Payment';
+            if (
+                attempts >= fastPollingAttempts
+            ) {
+                announceSlowPolling();
 
-                message.textContent =
-                    'Stripe confirmation is taking longer than expected. You can keep this page open or refresh it safely.';
+                scheduleNextCheck(
+                    slowPollingDelay
+                );
 
                 return;
             }
 
-            window.setTimeout(
-                checkStatus,
-                1500
+            scheduleNextCheck(
+                fastPollingDelay
             );
         } catch (error) {
-            if (attempts >= maximumAttempts) {
-                title.textContent =
-                    'Unable to Confirm Payment';
+            if (
+                attempts >= fastPollingAttempts
+            ) {
+                announceSlowPolling();
 
                 message.textContent =
-                    error instanceof Error
-                        ? error.message
-                        : 'Unable to confirm payment status.';
+                    'Alasne could not check the payment status just now. We will keep trying automatically. You can leave this page open or refresh it safely.';
 
-                actions.hidden = false;
+                scheduleNextCheck(
+                    slowPollingDelay
+                );
 
                 return;
             }
 
-            window.setTimeout(
-                checkStatus,
-                2000
+            scheduleNextCheck(
+                retryPollingDelay
             );
         }
     };
