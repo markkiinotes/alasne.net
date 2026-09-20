@@ -895,11 +895,17 @@ class ReturnRepository
                     :resolution_status,
                 updated_at = NOW()
             WHERE id = :id
+            AND NOT (
+                resolution_status = 'completed'
+                AND :resolution_status_guard <> 'completed'
+            )
         ");
 
         $stmt->execute([
             'id' => $returnId,
             'resolution_status' =>
+                $resolutionStatus,
+            'resolution_status_guard' =>
                 $resolutionStatus,
         ]);
     }
@@ -976,11 +982,16 @@ class ReturnRepository
                 END,
                 updated_at = NOW()
             WHERE id = :id
+            AND NOT (
+                refund_status = 'succeeded'
+                AND :refund_status_guard <> 'succeeded'
+            )
         ");
 
         $stmt->execute([
             'id' => $returnId,
             'refund_status' => $refundStatus,
+            'refund_status_guard' => $refundStatus,
             'refund_transaction_id' =>
                 $transactionId,
             'processed_amount_check' =>
