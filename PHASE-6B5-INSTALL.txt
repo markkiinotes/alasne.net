@@ -217,3 +217,69 @@ BRANCH SAFETY
 -------------
 Keep Stripe in sandbox/test mode throughout Phase 6B.5.
 Do not copy development Stripe secrets into staging.
+
+
+ACCEPTANCE RESULTS - 2026-09-20
+-------------------------------
+Acceptance A - PARTIAL CREDIT + STRIPE: PASSED
+
+Order 63 / WEB-20260920-132606-5594:
+- grand_total = 60.94
+- store_credit_applied_amount = 20.00
+- external_payment_amount = 40.94
+- Stripe charge transaction 46 succeeded for 40.94
+- reservation 2 consumed
+- exactly one checkout_redemption transaction
+- store-credit balance moved from 49.99 to 29.99
+- exactly one order_sale inventory movement
+- replayed payment_intent.succeeded event produced no duplicate
+  credit redemption or inventory movement
+
+Acceptance B - FULL CREDIT: PASSED
+
+Order 64 / WEB-20260920-140324-5485:
+- grand_total = 23.85
+- payment_provider = store_credit
+- payment_transaction_id = NULL
+- no payment transaction exists for the order
+- store_credit_applied_amount = 23.85
+- external_payment_amount = 0.00
+- reservation 3 consumed
+- exactly one checkout_redemption transaction
+- exactly one order_sale inventory movement
+
+Acceptance C - TERMINAL CANCELLATION: PASSED
+
+Order 65 / WEB-20260920-141639-1194:
+- grand_total = 23.85
+- store_credit_reserved_amount before cancellation = 5.00
+- external_payment_amount = 18.85
+- Stripe PaymentIntent cancellation finalized through signed webhook
+- order status = cancelled
+- payment status = failed
+- reservation 4 released
+- store-credit balance remained 6.14
+- reserved_balance returned to 0.00
+- no store-credit transaction created
+- no inventory movement created
+
+Acceptance D - MIXED-TENDER RETURN FAILURE PATH: PASSED
+
+Return 18 / RET-20260920-142606-1411 against Order 63:
+- approved merchandise refund = 49.99
+- redeemed credit restored = 16.41
+- external Stripe refund allocation = 33.58
+- refund transaction 48 ultimately failed asynchronously
+- failure reason: expired or canceled card
+- return resolution_status = partial_failed
+- return refund_status = failed
+- return refunded_amount = 0.00
+- order amount_refunded = 0.00
+- charge refunded_amount = 0.00
+- store_credit_restored_amount = 16.41
+- one redemption_restore transaction increased credit balance to 22.55
+- one return_restock inventory movement restored one unit
+- refund.failed webhook processed successfully
+
+The successful mixed-tender refund path remains to be proven with a
+fresh Stripe sandbox order using a refund-friendly test payment method.
