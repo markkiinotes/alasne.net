@@ -941,34 +941,72 @@ $currency = strtoupper((string)($return['currency'] ?? 'USD'));
                 </div>
 
                 <div class="return-action-grid">
-                    <div class="form-group">
-                        <label for="refund_scenario">
-                            Test Refund Result
-                        </label>
+                    <?php if (
+                        strtolower(
+                            (string) (
+                                $return['payment_provider']
+                                ?? ''
+                            )
+                        ) === 'test'
+                    ): ?>
+                        <div class="form-group">
+                            <label for="refund_scenario">
+                                Test Refund Result
+                            </label>
 
-                        <select
-                            id="refund_scenario"
-                            name="refund_scenario"
-                        >
-                            <option value="approved">
-                                Approved
-                            </option>
+                            <select
+                                id="refund_scenario"
+                                name="refund_scenario"
+                            >
+                                <option value="approved">
+                                    Approved
+                                </option>
 
-                            <option value="declined">
-                                Declined
-                            </option>
+                                <option value="declined">
+                                    Declined
+                                </option>
 
-                            <option value="error">
-                                Provider Error
-                            </option>
-                        </select>
+                                <option value="error">
+                                    Provider Error
+                                </option>
+                            </select>
 
-                        <small class="form-help">
-                            Used only when the original-
-                            payment refund is greater than
-                            zero.
-                        </small>
-                    </div>
+                            <small class="form-help">
+                                Used only by the simulated
+                                test payment provider.
+                            </small>
+                        </div>
+                    <?php else: ?>
+                        <div class="form-group">
+                            <label>
+                                Original Payment Provider
+                            </label>
+
+                            <div class="form-help">
+                                <strong>
+                                    <?= $escape(
+                                        $return[
+                                            'payment_method_name'
+                                        ]
+                                        ?? $return[
+                                            'payment_provider'
+                                        ]
+                                        ?? 'Payment provider'
+                                    ) ?>
+                                </strong>
+                                <br>
+                                Stripe refunds are finalized only
+                                after Alasne receives a signed
+                                Stripe Refund webhook.
+                            </div>
+
+                            <input
+                                type="hidden"
+                                name="refund_scenario"
+                                value="approved"
+                            >
+                        </div>
+                    <?php endif; ?>
 
                     <div class="form-group">
                         <label for="resolution_notes">
