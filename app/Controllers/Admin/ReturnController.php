@@ -773,11 +773,20 @@ class ReturnController extends Controller
                 $result['refund_transaction']
                 ?? null;
 
-            if (
-                is_array($transaction)
-                && ($transaction['status'] ?? '')
-                    !== 'succeeded'
-            ) {
+            $transactionStatus = is_array(
+                $transaction
+            )
+                ? strtolower(
+                    trim(
+                        (string) (
+                            $transaction['status']
+                            ?? ''
+                        )
+                    )
+                )
+                : '';
+
+            if ($transactionStatus === 'failed') {
                 $_SESSION['returns_error'] =
                     $transaction['failure_message']
                     ?? 'The non-cash resolution completed, but the payment refund failed.';
@@ -786,6 +795,15 @@ class ReturnController extends Controller
                     $returnId,
                     'refund_failed'
                 );
+            } elseif (
+                in_array(
+                    $transactionStatus,
+                    ['pending', 'processing'],
+                    true
+                )
+            ) {
+                $_SESSION['returns_success'] =
+                    'Return resolution saved. The Stripe refund was submitted and is awaiting signed webhook confirmation.';
             } else {
                 $_SESSION['returns_success'] =
                     'Return resolution completed successfully.';
