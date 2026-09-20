@@ -370,6 +370,13 @@ class MissionControlNavigationService
                         null,
                         'users.manage'
                     ),
+                    $this->item(
+                        'Platform Settings',
+                        '/admin/settings',
+                        'Global non-secret platform defaults and configuration',
+                        null,
+                        'settings.manage'
+                    ),
                 ],
             ],
         ];
