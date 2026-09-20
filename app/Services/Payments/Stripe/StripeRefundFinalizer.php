@@ -6,6 +6,7 @@ namespace App\Services\Payments\Stripe;
 
 use App\Repositories\PaymentTransactionRepository;
 use App\Repositories\ReturnRepository;
+use App\Services\Notifications\RefundNotificationPublisher;
 use PDO;
 use RuntimeException;
 use Stripe\Refund;
@@ -360,6 +361,17 @@ class StripeRefundFinalizer
             throw $exception;
         }
 
+        /*
+         * Financial state commits before any notification work.
+         * Re-running the finalizer safely re-enters the same
+         * Event Bridge idempotency key if publication was missed
+         * after commit.
+         */
+        $this->publishNotification(
+            $orderId,
+            $transactionId
+        );
+
         return [
             'ok' => true,
             'transitioned' => $transitioned,
@@ -374,6 +386,72 @@ class StripeRefundFinalizer
             'stripe_refund_id' =>
                 $refundId,
         ];
+    }
+
+    private function publishNotification(
+        int $orderId,
+        int $refundTransactionId
+    ): void {
+        if (
+            $orderId <= 0
+            || $refundTransactionId <= 0
+        ) {
+            return;
+        }
+
+        $transaction =
+            $this->paymentTransactions->find(
+                $refundTransactionId
+            );
+
+        if (! $transaction) {
+            return;
+        }
+
+        $status = strtolower(
+            trim(
+                (string) (
+                    $transaction['status']
+                    ?? ''
+                )
+            )
+        );
+
+        if (
+            ! in_array(
+                $status,
+                ['succeeded', 'failed'],
+                true
+            )
+        ) {
+            return;
+        }
+
+        try {
+            $publisher =
+                new RefundNotificationPublisher(
+                    $this->db
+                );
+
+            if ($status === 'succeeded') {
+                $publisher->publishSucceeded(
+                    $orderId,
+                    $refundTransactionId
+                );
+            } else {
+                $publisher->publishFailed(
+                    $orderId,
+                    $refundTransactionId
+                );
+            }
+        } catch (\Throwable $exception) {
+            error_log(
+                '[Alasne Stripe refund.'
+                . $status
+                . ' notification] '
+                . $exception->getMessage()
+            );
+        }
     }
 
     private function refundTransaction(
