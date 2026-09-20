@@ -238,15 +238,20 @@ class StripeRefundFinalizer
                     )
                 );
 
-                if (
-                    $localStatus !== 'succeeded'
-                    && $localStatus !== 'failed'
-                ) {
+                if ($localStatus !== 'failed') {
                     $failureMessage =
                         $this->failureMessage(
                             $refund,
                             $status
                         );
+
+                    $amount = round(
+                        (float) $transaction['amount'],
+                        2
+                    );
+
+                    $wasSettled =
+                        $localStatus === 'succeeded';
 
                     $this->paymentTransactions
                         ->markFailed(
@@ -266,43 +271,69 @@ class StripeRefundFinalizer
                             ]
                         );
 
-                    $this->returns->recordOrderEvent(
-                        $orderId,
-                        'refund_failed',
-                        'Refund failed',
-                        $failureMessage,
-                        null,
-                        number_format(
-                            (float) $transaction[
-                                'amount'
-                            ],
-                            2,
-                            '.',
-                            ''
-                        ),
-                        false
-                    );
+                    if ($wasSettled) {
+                        $this->paymentTransactions
+                            ->subtractRefundedAmount(
+                                (int) $charge['id'],
+                                $amount
+                            );
 
-                    if ($returnId > 0) {
-                        $this->returns->attachRefundResult(
-                            $returnId,
-                            'failed',
+                        $this->rollbackOrderRefund(
+                            $order,
+                            (int) $charge['id'],
                             $transactionId,
-                            0,
+                            $amount,
                             $failureMessage
                         );
-
-                        $this->returns->markResolutionStatus(
-                            $returnId,
-                            'partial_failed'
+                    } else {
+                        $this->returns->recordOrderEvent(
+                            $orderId,
+                            'refund_failed',
+                            'Refund failed',
+                            $failureMessage,
+                            null,
+                            number_format(
+                                $amount,
+                                2,
+                                '.',
+                                ''
+                            ),
+                            false
                         );
+                    }
+
+                    if ($returnId > 0) {
+                        if ($wasSettled) {
+                            $this->returns
+                                ->markRefundFailedAfterSettlement(
+                                    $returnId,
+                                    $transactionId,
+                                    $failureMessage
+                                );
+                        } else {
+                            $this->returns->attachRefundResult(
+                                $returnId,
+                                'failed',
+                                $transactionId,
+                                0,
+                                $failureMessage
+                            );
+
+                            $this->returns
+                                ->markResolutionStatus(
+                                    $returnId,
+                                    'partial_failed'
+                                );
+                        }
 
                         $this->returns->recordEvent(
                             $returnId,
                             'refund_failed',
                             'Refund failed',
                             $failureMessage,
-                            'pending',
+                            $wasSettled
+                                ? 'succeeded'
+                                : 'pending',
                             'failed'
                         );
                     }
@@ -580,6 +611,130 @@ class StripeRefundFinalizer
             $paymentStatus,
             true
         );
+    }
+
+    private function rollbackOrderRefund(
+        array $order,
+        int $chargeTransactionId,
+        int $failedRefundTransactionId,
+        float $amount,
+        string $failureMessage
+    ): void {
+        $amountPaid = round(
+            (float) (
+                $order['amount_paid']
+                ?? 0
+            ),
+            2
+        );
+
+        $currentRefundedAmount = round(
+            (float) (
+                $order['amount_refunded']
+                ?? 0
+            ),
+            2
+        );
+
+        $newRefundedAmount = max(
+            0,
+            round(
+                $currentRefundedAmount
+                - $amount,
+                2
+            )
+        );
+
+        if ($newRefundedAmount <= 0) {
+            $paymentStatus = 'paid';
+        } elseif (
+            $newRefundedAmount
+            >= $amountPaid
+        ) {
+            $paymentStatus = 'refunded';
+        } else {
+            $paymentStatus =
+                'partially_refunded';
+        }
+
+        $replacementTransactionId =
+            $this->latestSuccessfulRefundTransactionId(
+                (int) $order['id'],
+                $failedRefundTransactionId
+            )
+            ?? $chargeTransactionId;
+
+        $stmt = $this->db->prepare("
+            UPDATE orders
+            SET
+                payment_status =
+                    :payment_status,
+                payment_transaction_id =
+                    :payment_transaction_id,
+                amount_refunded =
+                    :amount_refunded,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => (int) $order['id'],
+            'payment_status' =>
+                $paymentStatus,
+            'payment_transaction_id' =>
+                $replacementTransactionId,
+            'amount_refunded' =>
+                number_format(
+                    $newRefundedAmount,
+                    2,
+                    '.',
+                    ''
+                ),
+        ]);
+
+        $this->returns->recordOrderEvent(
+            (int) $order['id'],
+            'refund_failed',
+            'Refund reversed after Stripe failure',
+            $failureMessage
+            . ' Alasne reversed the previously recorded $'
+            . number_format($amount, 2)
+            . ' refund.',
+            (string) (
+                $order['payment_status']
+                ?? 'partially_refunded'
+            ),
+            $paymentStatus,
+            true
+        );
+    }
+
+    private function latestSuccessfulRefundTransactionId(
+        int $orderId,
+        int $excludeTransactionId
+    ): ?int {
+        $stmt = $this->db->prepare("
+            SELECT id
+            FROM payment_transactions
+            WHERE order_id = :order_id
+            AND type = 'refund'
+            AND status = 'succeeded'
+            AND id <> :exclude_transaction_id
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'order_id' => $orderId,
+            'exclude_transaction_id' =>
+                $excludeTransactionId,
+        ]);
+
+        $transactionId = $stmt->fetchColumn();
+
+        return $transactionId !== false
+            ? (int) $transactionId
+            : null;
     }
 
     private function refundResponse(
