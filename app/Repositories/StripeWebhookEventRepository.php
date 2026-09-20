@@ -12,6 +12,156 @@ class StripeWebhookEventRepository
     {
     }
 
+
+    public function findByEventId(
+        string $eventId
+    ): ?array {
+        $stmt = $this->db->prepare("
+            SELECT *
+            FROM stripe_webhook_events
+            WHERE event_id = :event_id
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'event_id' => trim($eventId),
+        ]);
+
+        $event = $stmt->fetch();
+
+        return $event ?: null;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function summary(): array
+    {
+        $stmt = $this->db->query("
+            SELECT
+                COUNT(*) AS total_events,
+                SUM(
+                    CASE
+                        WHEN status = 'failed'
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS failed_events,
+                SUM(
+                    CASE
+                        WHEN status = 'processing'
+                        AND updated_at <= DATE_SUB(
+                            NOW(),
+                            INTERVAL 5 MINUTE
+                        )
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS stale_processing,
+                SUM(
+                    CASE
+                        WHEN status = 'processed'
+                        AND received_at >= DATE_SUB(
+                            NOW(),
+                            INTERVAL 24 HOUR
+                        )
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS processed_24h,
+                SUM(
+                    CASE
+                        WHEN status = 'ignored'
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS ignored_events
+            FROM stripe_webhook_events
+        ");
+
+        $row = $stmt->fetch() ?: [];
+
+        return [
+            'total_events' =>
+                (int) ($row['total_events'] ?? 0),
+            'failed_events' =>
+                (int) ($row['failed_events'] ?? 0),
+            'stale_processing' =>
+                (int) ($row['stale_processing'] ?? 0),
+            'processed_24h' =>
+                (int) ($row['processed_24h'] ?? 0),
+            'ignored_events' =>
+                (int) ($row['ignored_events'] ?? 0),
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function recent(int $limit = 100): array
+    {
+        $limit = max(1, min(500, $limit));
+
+        $stmt = $this->db->query("
+            SELECT *
+            FROM stripe_webhook_events
+            ORDER BY received_at DESC, id DESC
+            LIMIT {$limit}
+        ");
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function attention(int $limit = 50): array
+    {
+        $limit = max(1, min(250, $limit));
+
+        $stmt = $this->db->query("
+            SELECT *
+            FROM stripe_webhook_events
+            WHERE status = 'failed'
+            OR (
+                status = 'processing'
+                AND updated_at <= DATE_SUB(
+                    NOW(),
+                    INTERVAL 5 MINUTE
+                )
+            )
+            ORDER BY
+                CASE
+                    WHEN status = 'failed'
+                    THEN 0
+                    ELSE 1
+                END,
+                updated_at ASC,
+                id ASC
+            LIMIT {$limit}
+        ");
+
+        return $stmt->fetchAll();
+    }
+
+    public function attentionCount(): int
+    {
+        $stmt = $this->db->query("
+            SELECT COUNT(*)
+            FROM stripe_webhook_events
+            WHERE status = 'failed'
+            OR (
+                status = 'processing'
+                AND updated_at <= DATE_SUB(
+                    NOW(),
+                    INTERVAL 5 MINUTE
+                )
+            )
+        ");
+
+        return (int) $stmt->fetchColumn();
+    }
+
     public function claim(array $event): bool
     {
         $insert = $this->db->prepare("
