@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Payments\Stripe;
 
 use App\Repositories\PaymentTransactionRepository;
+use App\Repositories\StoreCreditRepository;
 use App\Services\Notifications\OrderCreatedNotificationPublisher;
 use App\Services\Notifications\PaymentCapturedNotificationPublisher;
 use PDO;
@@ -15,7 +16,8 @@ class StripePaymentFinalizer
 {
     public function __construct(
         private PDO $db,
-        private PaymentTransactionRepository $paymentTransactions
+        private PaymentTransactionRepository $paymentTransactions,
+        private StoreCreditRepository $storeCredits
     ) {
     }
 
@@ -191,15 +193,71 @@ class StripePaymentFinalizer
                         ]
                     );
 
-                $amount = round(
+                $externalAmount = round(
                     (float) $transaction['amount'],
                     2
                 );
 
+                $storeCreditAmount = round(
+                    (float) (
+                        $order[
+                            'store_credit_applied_amount'
+                        ] ?? 0
+                    ),
+                    2
+                );
+
+                $creditResult =
+                    $this->storeCredits
+                        ->finalizeCheckoutReservation(
+                            $orderId
+                        );
+
+                if ($creditResult) {
+                    $reservation =
+                        $creditResult['reservation']
+                        ?? [];
+
+                    $storeCreditAmount = round(
+                        (float) (
+                            $reservation['amount']
+                            ?? $storeCreditAmount
+                        ),
+                        2
+                    );
+
+                    if (
+                        ! empty(
+                            $creditResult['created']
+                        )
+                    ) {
+                        $this->recordOrderEvent(
+                            $orderId,
+                            'store_credit_applied',
+                            'Store credit applied',
+                            '$'
+                            . number_format(
+                                $storeCreditAmount,
+                                2
+                            )
+                            . ' in store credit was consumed after Stripe confirmed the remaining balance.',
+                            null,
+                            number_format(
+                                $storeCreditAmount,
+                                2,
+                                '.',
+                                ''
+                            ),
+                            true
+                        );
+                    }
+                }
+
                 $this->markOrderPaid(
-                    $orderId,
+                    $order,
                     $transactionId,
-                    $amount
+                    $externalAmount,
+                    $storeCreditAmount
                 );
 
                 foreach ($items as $item) {
@@ -429,6 +487,14 @@ class StripePaymentFinalizer
                                 $failureMessage,
                         ]
                     );
+
+                if ($cancelOrder) {
+                    $this->storeCredits
+                        ->releaseCheckoutReservation(
+                            $orderId,
+                            'Stripe PaymentIntent was canceled.'
+                        );
+                }
 
                 $stmt = $this->db->prepare("
                     UPDATE orders
@@ -744,10 +810,36 @@ class StripePaymentFinalizer
     }
 
     private function markOrderPaid(
-        int $orderId,
+        array $order,
         int $paymentTransactionId,
-        float $amount
+        float $externalAmount,
+        float $storeCreditAmount
     ): void {
+        $grandTotal = round(
+            (float) (
+                $order['grand_total']
+                ?? 0
+            ),
+            2
+        );
+
+        $settledTotal = round(
+            $externalAmount
+            + $storeCreditAmount,
+            2
+        );
+
+        if (
+            $grandTotal <= 0
+            || abs(
+                $settledTotal - $grandTotal
+            ) > 0.01
+        ) {
+            throw new RuntimeException(
+                'Mixed-tender settlement does not equal the Alasne order total.'
+            );
+        }
+
         $stmt = $this->db->prepare("
             UPDATE orders
             SET
@@ -756,6 +848,10 @@ class StripePaymentFinalizer
                 payment_transaction_id =
                     :payment_transaction_id,
                 amount_paid = :amount_paid,
+                store_credit_reserved_amount =
+                    0.00,
+                store_credit_applied_amount =
+                    :store_credit_applied_amount,
                 external_payment_amount =
                     :external_payment_amount,
                 amount_refunded = 0.00,
@@ -766,29 +862,57 @@ class StripePaymentFinalizer
         ");
 
         $stmt->execute([
-            'id' => $orderId,
+            'id' => (int) $order['id'],
             'payment_transaction_id' =>
                 $paymentTransactionId,
-            'amount_paid' => number_format(
-                $amount,
-                2,
-                '.',
-                ''
-            ),
+            'amount_paid' =>
+                number_format(
+                    $grandTotal,
+                    2,
+                    '.',
+                    ''
+                ),
+            'store_credit_applied_amount' =>
+                number_format(
+                    $storeCreditAmount,
+                    2,
+                    '.',
+                    ''
+                ),
             'external_payment_amount' =>
                 number_format(
-                    max(0, $amount),
+                    $externalAmount,
                     2,
                     '.',
                     ''
                 ),
         ]);
 
+        $parts = [];
+
+        if ($storeCreditAmount > 0) {
+            $parts[] = '$'
+                . number_format(
+                    $storeCreditAmount,
+                    2
+                )
+                . ' store credit';
+        }
+
+        $parts[] = '$'
+            . number_format(
+                $externalAmount,
+                2
+            )
+            . ' Stripe payment';
+
         $this->recordOrderEvent(
-            $orderId,
+            (int) $order['id'],
             'payment_succeeded',
             'Payment received',
-            'Stripe confirmed the payment and the order is ready for processing.',
+            'Settlement completed using '
+            . implode(' and ', $parts)
+            . '.',
             'processing',
             'paid',
             true
