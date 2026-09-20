@@ -279,10 +279,10 @@ $badgeClass = static function (string $status): string {
         <div>
             <h2>Reconcile Stale Stripe Transactions</h2>
             <p>
-                Re-fetch pending Stripe charges and refunds that
-                have remained unresolved locally for at least five
-                minutes. Only canonical terminal/success states are
-                finalized.
+                Re-fetch unresolved Stripe charges and pending
+                refunds that have remained stale locally for at
+                least five minutes. Only canonical Stripe states
+                supported by Alasne's finalizers are applied.
             </p>
         </div>
 
@@ -618,10 +618,11 @@ $badgeClass = static function (string $status): string {
     <section class="panel">
         <div class="table-header">
             <div>
-                <h2>Stale Pending Transactions</h2>
+                <h2>Stale / Recoverable Transactions</h2>
                 <p>
-                    Local Stripe charges or refunds still pending
-                    after at least five minutes.
+                    Pending Stripe transactions and retryable failed
+                    charges whose orders are still unresolved after
+                    at least five minutes.
                 </p>
             </div>
         </div>
