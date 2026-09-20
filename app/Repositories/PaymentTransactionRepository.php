@@ -141,6 +141,25 @@ class PaymentTransactionRepository
         return $transaction ?: null;
     }
 
+    public function findForUpdate(int $id): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT *
+            FROM payment_transactions
+            WHERE id = :id
+            LIMIT 1
+            FOR UPDATE
+        ");
+
+        $stmt->execute([
+            'id' => $id,
+        ]);
+
+        $transaction = $stmt->fetch();
+
+        return $transaction ?: null;
+    }
+
     public function findByIdempotencyKey(
         string $idempotencyKey
     ): ?array {
