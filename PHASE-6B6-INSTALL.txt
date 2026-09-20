@@ -436,3 +436,41 @@ Post-replay idempotency proof:
 
 This proves a late success webhook arriving after Mission Control
 reconciliation does not duplicate financial or inventory effects.
+
+
+Acceptance D - RETRY ACCESS SAFETY: PASSED
+
+Controlled retry-safety checks used:
+- evt_3UHtZAIRLe4euTCw2bPMjNvi
+- type = payment_intent.succeeded
+
+Observed:
+- processed event retry was blocked
+- ignored event retry was blocked
+- fresh processing event retry was blocked
+
+All three returned:
+Only failed events or processing events stale for at least five minutes
+can be retried.
+
+After the controlled status changes, the event ledger row was restored to:
+- status = processed
+- attempts = 1
+- last_error = NULL
+- processed_at = 2026-09-20 19:07:40
+- updated_at = 2026-09-20 19:07:40
+
+No order, payment, inventory, credit, return, or notification state
+was changed by this acceptance test.
+
+PHASE 6B.6 ACCEPTANCE: PASSED
+
+All required Phase 6B.6 acceptance paths are proven:
+- Stripe Operations Mission Control dashboard
+- safe failed/stale webhook retry from Stripe's authenticated API
+- retry idempotency for already-finalized business state
+- safe nonterminal reconciliation with no forced transition
+- recovery of a succeeded Stripe payment whose webhook never arrived
+- late webhook idempotency after reconciliation
+- retry access safety for processed, ignored, and fresh-processing events
+- local/staging code and build gate
