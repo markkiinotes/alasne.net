@@ -269,3 +269,65 @@ BRANCH SAFETY
 -------------
 Keep Stripe in sandbox/test mode through Phase 6B.6 acceptance.
 Do not merge to master until explicitly requested.
+
+
+ACCEPTANCE RESULTS - 2026-09-20
+-------------------------------
+Acceptance A - OPERATIONS DASHBOARD: PASSED
+
+Observed:
+- /admin/stripe-operations loaded successfully
+- Stripe mode displayed as TEST
+- secret key, publishable key, and webhook secret showed
+  configuration presence without revealing credential values
+- webhook ledger populated with recent processed Stripe events
+- failed events = 0 before simulation
+- stale processing = 0
+- stale/recoverable transactions = 1
+- needs attention = 1
+
+Local code gate:
+- StripeOperationsController lint passed
+- StripeWebhookEventRepository lint passed
+- MissionControlNavigationService lint passed
+- StripeOperationsService lint passed
+- StripeWebhookService lint passed
+- stripe-operations view lint passed
+- config/routes.php lint passed
+- composer optimized autoload generated successfully
+- git diff --check returned no output
+
+Acceptance B - SAFE FAILED EVENT RETRY: PASSED
+
+Event:
+- evt_3UHt1iIRLe4euTCw24RfVUUD
+- type = refund.updated
+- related Order 66 / Return 19
+- canonical Stripe Refund status = succeeded
+
+Controlled simulation:
+- webhook ledger row changed to failed
+- last_error = Phase 6B.6 acceptance simulation
+- row made stale by 10 minutes
+- dashboard showed failed events = 1
+- dashboard showed needs attention = 2
+
+Mission Control Retry result:
+- event reprocessed successfully from Stripe's authenticated API
+- webhook status returned to processed
+- attempts increased from 1 to 2
+- last_error cleared
+
+Idempotency proof after retry:
+- order amount_refunded remained 11.86
+- order store_credit_restored_amount remained 3.14
+- return refunded_amount remained 11.86
+- return external_refund_amount remained 11.86
+- charge refunded_amount remained 11.86
+- refund transaction remained succeeded for 11.86
+- redemption_restore count remained 1
+- return_restock count remained 1
+- store-credit balance remained 20.69
+- reserved_balance remained 0.00
+- dashboard returned to failed events = 0
+- needs attention returned to 1
