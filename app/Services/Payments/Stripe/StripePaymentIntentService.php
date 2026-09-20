@@ -95,7 +95,8 @@ class StripePaymentIntentService
     public function refund(
         string $paymentIntentId,
         float $amount,
-        ?string $idempotencyKey = null
+        ?string $idempotencyKey = null,
+        array $metadata = []
     ): Refund {
         $paymentIntentId = trim($paymentIntentId);
         $minorAmount = $this->toMinorUnits($amount);
@@ -118,14 +119,20 @@ class StripePaymentIntentService
             $options['idempotency_key'] = trim($idempotencyKey);
         }
 
+        $parameters = [
+            'payment_intent' => $paymentIntentId,
+            'amount' => $minorAmount,
+        ];
+
+        if ($metadata !== []) {
+            $parameters['metadata'] = $metadata;
+        }
+
         return $this->clients
             ->client()
             ->refunds
             ->create(
-                [
-                    'payment_intent' => $paymentIntentId,
-                    'amount' => $minorAmount,
-                ],
+                $parameters,
                 $options
             );
     }
