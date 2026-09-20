@@ -680,64 +680,104 @@ class ReturnResolutionService
                         . $returnId
                     );
 
-                $succeeded =
-                    ($refundTransaction['status'] ?? '')
-                    === 'succeeded';
-
-                $this->returns->attachRefundResult(
-                    $returnId,
-                    $succeeded
-                        ? 'succeeded'
-                        : 'failed',
-                    isset($refundTransaction['id'])
-                        ? (int) $refundTransaction['id']
-                        : null,
-                    $succeeded
-                        ? $externalRefundToProcess
-                        : 0,
-                    $succeeded
-                        ? 'Payment refund completed.'
-                        : (
-                            $refundTransaction[
-                                'failure_message'
-                            ]
-                            ?? 'Payment refund failed.'
+                $transactionStatus = strtolower(
+                    trim(
+                        (string) (
+                            $refundTransaction['status']
+                            ?? 'pending'
                         )
+                    )
                 );
 
-                $this->returns->markResolutionStatus(
-                    $returnId,
-                    $succeeded
-                        ? 'completed'
-                        : 'partial_failed'
-                );
+                $refundTransactionId = isset(
+                    $refundTransaction['id']
+                )
+                    ? (int) $refundTransaction['id']
+                    : null;
 
-                $this->returns->recordEvent(
-                    $returnId,
-                    $succeeded
-                        ? 'refund_succeeded'
-                        : 'refund_failed',
-                    $succeeded
-                        ? 'Refund completed'
-                        : 'Refund failed',
-                    $succeeded
-                        ? '$'
-                            . number_format(
-                                $externalRefundToProcess,
-                                2
-                            )
-                            . ' refunded to the original payment method.'
-                        : (
-                            $refundTransaction[
-                                'failure_message'
-                            ]
-                            ?? 'The refund was not approved.'
-                        ),
-                    'pending',
-                    $succeeded
-                        ? 'succeeded'
-                        : 'failed'
-                );
+                if ($transactionStatus === 'succeeded') {
+                    $this->returns->attachRefundResult(
+                        $returnId,
+                        'succeeded',
+                        $refundTransactionId,
+                        $externalRefundToProcess,
+                        'Payment refund completed.'
+                    );
+
+                    $this->returns->markResolutionStatus(
+                        $returnId,
+                        'completed'
+                    );
+
+                    $this->returns->recordEvent(
+                        $returnId,
+                        'refund_succeeded',
+                        'Refund completed',
+                        '$'
+                        . number_format(
+                            $externalRefundToProcess,
+                            2
+                        )
+                        . ' refunded to the original payment method.',
+                        'pending',
+                        'succeeded'
+                    );
+                } elseif ($transactionStatus === 'failed') {
+                    $failureMessage =
+                        $refundTransaction[
+                            'failure_message'
+                        ]
+                        ?? 'Payment refund failed.';
+
+                    $this->returns->attachRefundResult(
+                        $returnId,
+                        'failed',
+                        $refundTransactionId,
+                        0,
+                        $failureMessage
+                    );
+
+                    $this->returns->markResolutionStatus(
+                        $returnId,
+                        'partial_failed'
+                    );
+
+                    $this->returns->recordEvent(
+                        $returnId,
+                        'refund_failed',
+                        'Refund failed',
+                        $failureMessage,
+                        'pending',
+                        'failed'
+                    );
+                } else {
+                    $this->returns->attachRefundResult(
+                        $returnId,
+                        'pending',
+                        $refundTransactionId,
+                        0,
+                        'Stripe refund submitted and awaiting signed webhook confirmation.'
+                    );
+
+                    $this->returns->markResolutionStatus(
+                        $returnId,
+                        'pending_refund'
+                    );
+
+                    $this->returns->recordEvent(
+                        $returnId,
+                        'refund_pending',
+                        'Refund submitted',
+                        '$'
+                        . number_format(
+                            $externalRefundToProcess,
+                            2
+                        )
+                        . ' was submitted to Stripe and is awaiting confirmation.',
+                        'pending',
+                        'processing'
+                    );
+                }
             } catch (\Throwable $exception) {
                 $this->returns->attachRefundResult(
                     $returnId,
