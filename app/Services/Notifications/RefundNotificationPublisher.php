@@ -67,6 +67,10 @@ class RefundNotificationPublisher
             );
         }
 
+        $this->assertLiveRule(
+            $eventKey
+        );
+
         $payload = $this->refundPayload(
             $orderId,
             $refundTransactionId,
@@ -85,6 +89,53 @@ class RefundNotificationPublisher
                     . $refundTransactionId,
             ]
         );
+    }
+
+    private function assertLiveRule(
+        string $eventKey
+    ): void {
+        $stmt = $this->db->prepare("
+            SELECT
+                is_enabled,
+                dry_run_only
+            FROM mission_control_notification_automation_rules
+            WHERE event_key = :event_key
+            AND rule_key IN (
+                'refund_succeeded_customer_notice',
+                'refund_failed_customer_notice'
+            )
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            'event_key' => $eventKey,
+        ]);
+
+        $rule = $stmt->fetch();
+
+        if (! $rule) {
+            throw new RuntimeException(
+                'Refund notification automation rule is not installed for '
+                . $eventKey
+                . '.'
+            );
+        }
+
+        if (empty($rule['is_enabled'])) {
+            throw new RuntimeException(
+                'Refund notification automation rule is disabled for '
+                . $eventKey
+                . '.'
+            );
+        }
+
+        if (! empty($rule['dry_run_only'])) {
+            throw new RuntimeException(
+                'Refund notification automation rule is still in dry-run mode for '
+                . $eventKey
+                . '.'
+            );
+        }
     }
 
     private function refundPayload(
