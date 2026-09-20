@@ -96,7 +96,10 @@ $escape = static function (mixed $value): string {
                     Pay
                     $<?= number_format(
                         (float) (
-                            $order['grand_total']
+                            $order[
+                                'external_payment_amount'
+                            ]
+                            ?? $order['grand_total']
                             ?? 0
                         ),
                         2
@@ -133,12 +136,48 @@ $escape = static function (mixed $value): string {
                     </td>
                 </tr>
 
-                <tr class="summary-total">
-                    <th>Total Due</th>
+                <tr>
+                    <th>Order Total</th>
                     <td>
                         $<?= number_format(
                             (float) (
                                 $order['grand_total']
+                                ?? 0
+                            ),
+                            2
+                        ) ?>
+                    </td>
+                </tr>
+
+                <?php
+                $reservedCredit = (float) (
+                    $order[
+                        'store_credit_reserved_amount'
+                    ] ?? 0
+                );
+                ?>
+
+                <?php if ($reservedCredit > 0): ?>
+                    <tr>
+                        <th>Store Credit Reserved</th>
+                        <td>
+                            -$<?= number_format(
+                                $reservedCredit,
+                                2
+                            ) ?>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+
+                <tr class="summary-total">
+                    <th>Stripe Payment Due</th>
+                    <td>
+                        $<?= number_format(
+                            (float) (
+                                $order[
+                                    'external_payment_amount'
+                                ]
+                                ?? $order['grand_total']
                                 ?? 0
                             ),
                             2
