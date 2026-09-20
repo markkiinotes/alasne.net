@@ -6,6 +6,7 @@ namespace App\Services\Checkout;
 
 use App\Repositories\PaymentMethodRepository;
 use App\Repositories\PaymentTransactionRepository;
+use App\Repositories\StoreCreditRepository;
 use App\Repositories\TaxRuleRepository;
 use App\Services\Payments\Stripe\StripePaymentIntentService;
 use PDO;
@@ -19,6 +20,7 @@ class StripeCheckoutService
         private TaxRuleRepository $taxRules,
         private PaymentMethodRepository $paymentMethods,
         private PaymentTransactionRepository $paymentTransactions,
+        private StoreCreditRepository $storeCredits,
         private StripePaymentIntentService $stripePaymentIntents
     ) {
     }
@@ -210,8 +212,35 @@ class StripeCheckoutService
 
             if ($grandTotal <= 0) {
                 throw new RuntimeException(
-                    'Stripe payment amount must be greater than zero.'
+                    'Order total must be greater than zero.'
                 );
+            }
+
+            $applyStoreCredit = filter_var(
+                $customerData['apply_store_credit']
+                    ?? false,
+                FILTER_VALIDATE_BOOL
+            );
+
+            $requestedCredit = $applyStoreCredit
+                ? round(
+                    max(
+                        0,
+                        (float) (
+                            $customerData[
+                                'store_credit_amount'
+                            ] ?? 0
+                        )
+                    ),
+                    2
+                )
+                : 0.0;
+
+            if (
+                $applyStoreCredit
+                && $requestedCredit <= 0
+            ) {
+                $requestedCredit = $grandTotal;
             }
 
             $currency = 'USD';
@@ -319,6 +348,54 @@ class StripeCheckoutService
                 );
             }
 
+            $storeCreditAmount = 0.0;
+
+            if (
+                $applyStoreCredit
+                && $requestedCredit > 0
+            ) {
+                $reservation =
+                    $this->storeCredits
+                        ->reserveForCheckout(
+                            $storeId,
+                            $customerId,
+                            $orderId,
+                            min(
+                                $requestedCredit,
+                                $grandTotal
+                            ),
+                            $currency
+                        );
+
+                $storeCreditAmount = round(
+                    (float) (
+                        $reservation['amount'] ?? 0
+                    ),
+                    2
+                );
+            }
+
+            $externalAmount = round(
+                max(
+                    0,
+                    $grandTotal - $storeCreditAmount
+                ),
+                2
+            );
+
+            if ($externalAmount <= 0) {
+                throw new RuntimeException(
+                    'Store credit now covers the full order. Review checkout and submit the order as store-credit-only.'
+                );
+            }
+
+            $this->updateOrderSettlement(
+                $orderId,
+                $paymentMethod,
+                $storeCreditAmount,
+                $externalAmount
+            );
+
             $paymentTransactionId =
                 $this->paymentTransactions->create([
                     'store_id' => $storeId,
@@ -331,7 +408,7 @@ class StripeCheckoutService
                     'idempotency_key' =>
                         $idempotencyKey,
                     'currency' => $currency,
-                    'amount' => $grandTotal,
+                    'amount' => $externalAmount,
                     'payment_method_name' =>
                         $paymentMethod['name'],
                     'payment_method_code' =>
@@ -343,6 +420,27 @@ class StripeCheckoutService
                         'checkout_mode' =>
                             'payment_element',
                         'server_quote' => true,
+                        'order_total' =>
+                            number_format(
+                                $grandTotal,
+                                2,
+                                '.',
+                                ''
+                            ),
+                        'store_credit_reserved_amount' =>
+                            number_format(
+                                $storeCreditAmount,
+                                2,
+                                '.',
+                                ''
+                            ),
+                        'external_payment_amount' =>
+                            number_format(
+                                $externalAmount,
+                                2,
+                                '.',
+                                ''
+                            ),
                     ],
                 ]);
 
@@ -566,6 +664,12 @@ class StripeCheckoutService
                 ]
             );
 
+            $this->storeCredits
+                ->releaseCheckoutReservation(
+                    $orderId,
+                    'Stripe PaymentIntent could not be initialized.'
+                );
+
             $stmt = $this->db->prepare("
                 UPDATE orders
                 SET
@@ -607,6 +711,59 @@ class StripeCheckoutService
             '[Alasne Stripe PaymentIntent creation] '
             . $exception->getMessage()
         );
+    }
+
+    private function updateOrderSettlement(
+        int $orderId,
+        array $paymentMethod,
+        float $storeCreditAmount,
+        float $externalAmount
+    ): void {
+        $methodName = (string) $paymentMethod['name'];
+        $methodCode = (string) $paymentMethod['code'];
+
+        if ($storeCreditAmount > 0) {
+            $methodName .= ' + Store Credit';
+            $methodCode .= '+store-credit';
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE orders
+            SET
+                payment_method_name =
+                    :payment_method_name,
+                payment_method_code =
+                    :payment_method_code,
+                payment_provider = 'stripe',
+                store_credit_reserved_amount =
+                    :store_credit_reserved_amount,
+                external_payment_amount =
+                    :external_payment_amount,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $orderId,
+            'payment_method_name' =>
+                $methodName,
+            'payment_method_code' =>
+                $methodCode,
+            'store_credit_reserved_amount' =>
+                number_format(
+                    $storeCreditAmount,
+                    2,
+                    '.',
+                    ''
+                ),
+            'external_payment_amount' =>
+                number_format(
+                    $externalAmount,
+                    2,
+                    '.',
+                    ''
+                ),
+        ]);
     }
 
     private function findOrCreateCustomer(
@@ -1286,11 +1443,6 @@ class StripeCheckoutService
             return null;
         }
 
-        /*
-         * StripePaymentIntentService currently reads grand_total.
-         * Keep grand_total aligned with the external payment amount
-         * for the no-store-credit Stripe path in Phase 6B.2A.
-         */
         return $order;
     }
 
