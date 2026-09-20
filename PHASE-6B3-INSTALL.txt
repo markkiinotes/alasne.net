@@ -1,0 +1,63 @@
+PHASE 6B.3 - STRIPE REFUND FINALIZATION
+========================================
+
+PURPOSE
+-------
+Make Stripe refunds webhook-authoritative and replay-safe while reusing
+Alasne's existing returns, payment_transactions, order totals, and
+return-resolution workflow.
+
+WHAT CHANGED
+------------
+- Stripe refund requests create/reuse one local pending refund transaction.
+- Stripe Refund metadata carries Alasne order, charge transaction,
+  refund transaction, and return IDs.
+- Signed refund.created / refund.updated / refund.failed events finalize
+  Alasne state.
+- charge.refunded remains recorded as an aggregate audit event.
+- Test Payment refunds remain synchronous and unchanged.
+- Return resolution shows a pending state while Stripe confirmation is
+  outstanding.
+- Successful refund webhooks update payment transactions, charge/order
+  refunded totals, payment status, return refund status, return resolution
+  status, and return/order event history.
+- Failed/canceled refund webhooks do not increase refunded totals.
+- Replayed Stripe Refund events cannot double-increment refunded totals.
+- No database migration is required.
+
+LOCAL STRIPE LISTENER
+---------------------
+Restart the listener with Refund object events included:
+
+"%LOCALAPPDATA%\StripeCLI\stripe.exe" listen --events payment_intent.succeeded,payment_intent.payment_failed,payment_intent.canceled,refund.created,refund.updated,refund.failed,charge.refunded --forward-to http://alasne.net.local/webhooks/stripe
+
+Use the NEW whsec_... printed by that listener as the development
+STRIPE_WEBHOOK_SECRET. Never copy the development listener secret into
+the staging environment.
+
+ACCEPTANCE GATE
+---------------
+1. Use a paid Stripe sandbox order with refundable external-payment amount.
+2. Create, approve, and receive a return through the normal RMA workflow.
+3. Complete the return with an Original-Payment Refund amount.
+4. Mission Control should report that the Stripe refund is awaiting signed
+   webhook confirmation instead of reporting failure.
+5. Listener should receive refund.created and return HTTP 200.
+6. After a succeeded Refund event:
+   - refund transaction = succeeded
+   - parent charge refunded_amount increases exactly once
+   - order amount_refunded increases exactly once
+   - order payment_status = partially_refunded or refunded
+   - return refund_status = succeeded
+   - return resolution_status = completed
+7. Resend the same refund event. Totals must not increase again.
+8. Failed/canceled Refund events must not increase refunded totals.
+
+SECURITY / CONSISTENCY
+----------------------
+The browser and Mission Control never mark a Stripe refund succeeded.
+Only a signature-verified Stripe Refund webhook can transition the local
+refund to succeeded.
+
+Stripe API idempotency and Alasne's payment transaction idempotency key
+prevent duplicate provider refund creation during retries.
