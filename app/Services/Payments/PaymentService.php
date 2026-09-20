@@ -8,6 +8,7 @@ use App\Repositories\PaymentMethodRepository;
 use App\Repositories\PaymentTransactionRepository;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
 use App\Services\Payments\Providers\TestPaymentProvider;
+use App\Services\Payments\Stripe\StripePaymentIntentService;
 use PDO;
 use RuntimeException;
 
@@ -16,7 +17,8 @@ class PaymentService
     public function __construct(
         private PDO $db,
         private PaymentMethodRepository $paymentMethods,
-        private PaymentTransactionRepository $transactions
+        private PaymentTransactionRepository $transactions,
+        private StripePaymentIntentService $stripePayments
     ) {
     }
 
@@ -271,6 +273,15 @@ class PaymentService
                 $orderId
             );
 
+        $providerName = strtolower(
+            trim(
+                (string) (
+                    $charge['provider']
+                    ?? ''
+                )
+            )
+        );
+
         $existing =
             $this->transactions
                 ->findByIdempotencyKey(
@@ -278,6 +289,31 @@ class PaymentService
                 );
 
         if ($existing) {
+            if (
+                $providerName === 'stripe'
+                && strtolower(
+                    (string) (
+                        $existing['status']
+                        ?? ''
+                    )
+                ) === 'pending'
+                && trim(
+                    (string) (
+                        $existing[
+                            'provider_transaction_id'
+                        ] ?? ''
+                    )
+                ) === ''
+            ) {
+                return $this->requestStripeRefund(
+                    (int) $existing['id'],
+                    $charge,
+                    $amount,
+                    $paymentData,
+                    $idempotencyKey
+                );
+            }
+
             return $existing;
         }
 
@@ -308,6 +344,16 @@ class PaymentService
                     $paymentData
                 ),
             ]);
+
+        if ($providerName === 'stripe') {
+            return $this->requestStripeRefund(
+                $refundTransactionId,
+                $charge,
+                $amount,
+                $paymentData,
+                $idempotencyKey
+            );
+        }
 
         $provider = $this->resolveProvider(
             (string) $charge['provider']
@@ -403,6 +449,181 @@ class PaymentService
             }
 
             throw $exception;
+        }
+
+        return $this->transactions->find(
+            $refundTransactionId
+        ) ?? [];
+    }
+
+    private function requestStripeRefund(
+        int $refundTransactionId,
+        array $charge,
+        float $amount,
+        array $paymentData,
+        string $idempotencyKey
+    ): array {
+        $paymentIntentId = trim(
+            (string) (
+                $charge['provider_transaction_id']
+                ?? ''
+            )
+        );
+
+        if ($paymentIntentId === '') {
+            $this->transactions->markFailed(
+                $refundTransactionId,
+                [
+                    'provider_transaction_id' => null,
+                    'response' => [],
+                    'failure_code' =>
+                        'stripe_payment_intent_missing',
+                    'failure_message' =>
+                        'The original Stripe PaymentIntent is unavailable.',
+                ]
+            );
+
+            return $this->transactions->find(
+                $refundTransactionId
+            ) ?? [];
+        }
+
+        $metadata = [
+            'alasne_order_id' =>
+                (string) (
+                    $charge['order_id']
+                    ?? 0
+                ),
+            'alasne_charge_transaction_id' =>
+                (string) (
+                    $charge['id']
+                    ?? 0
+                ),
+            'alasne_refund_transaction_id' =>
+                (string) $refundTransactionId,
+        ];
+
+        $returnId = (int) (
+            $paymentData['return_id']
+            ?? 0
+        );
+
+        if ($returnId > 0) {
+            $metadata['alasne_return_id'] =
+                (string) $returnId;
+        }
+
+        try {
+            $refund = $this->stripePayments->refund(
+                $paymentIntentId,
+                $amount,
+                $idempotencyKey,
+                $metadata
+            );
+
+            $status = strtolower(
+                trim(
+                    (string) (
+                        $refund->status
+                        ?? 'pending'
+                    )
+                )
+            );
+
+            $response = [
+                'status' => $status,
+                'amount' =>
+                    (int) (
+                        $refund->amount
+                        ?? 0
+                    ),
+                'currency' =>
+                    (string) (
+                        $refund->currency
+                        ?? ''
+                    ),
+                'payment_intent' =>
+                    $paymentIntentId,
+                'failure_reason' =>
+                    isset($refund->failure_reason)
+                        ? (string) $refund->failure_reason
+                        : null,
+            ];
+
+            $this->transactions
+                ->attachProviderTransaction(
+                    $refundTransactionId,
+                    (string) $refund->id,
+                    $response
+                );
+
+            if (in_array(
+                $status,
+                ['failed', 'canceled'],
+                true
+            )) {
+                $failureMessage =
+                    $status === 'canceled'
+                        ? 'Stripe canceled the refund.'
+                        : 'Stripe reported that the refund failed.';
+
+                $this->transactions->markFailed(
+                    $refundTransactionId,
+                    [
+                        'provider_transaction_id' =>
+                            (string) $refund->id,
+                        'response' => $response,
+                        'failure_code' =>
+                            'stripe_refund_' . $status,
+                        'failure_message' =>
+                            $failureMessage,
+                    ]
+                );
+
+                $this->recordOrderEvent(
+                    (int) $charge['order_id'],
+                    'refund_failed',
+                    'Refund failed',
+                    $failureMessage,
+                    null,
+                    number_format(
+                        $amount,
+                        2,
+                        '.',
+                        ''
+                    ),
+                    false
+                );
+            }
+        } catch (\Throwable $exception) {
+            $this->transactions->markFailed(
+                $refundTransactionId,
+                [
+                    'provider_transaction_id' => null,
+                    'response' => [],
+                    'failure_code' =>
+                        'stripe_refund_request_failed',
+                    'failure_message' =>
+                        $exception->getMessage()
+                        ?: 'Stripe could not create the refund.',
+                ]
+            );
+
+            $this->recordOrderEvent(
+                (int) $charge['order_id'],
+                'refund_failed',
+                'Refund request failed',
+                $exception->getMessage()
+                ?: 'Stripe could not create the refund.',
+                null,
+                number_format(
+                    $amount,
+                    2,
+                    '.',
+                    ''
+                ),
+                false
+            );
         }
 
         return $this->transactions->find(
