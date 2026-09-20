@@ -461,6 +461,14 @@ class StripePaymentFinalizer
                     )
                 );
 
+            $orderWasCancelled =
+                strtolower(
+                    (string) (
+                        $order['status']
+                        ?? ''
+                    )
+                ) === 'cancelled';
+
             if ($newTransactionState !== 'failed') {
                 $this->paymentTransactions
                     ->markFailed(
@@ -487,23 +495,71 @@ class StripePaymentFinalizer
                                 $failureMessage,
                         ]
                     );
+            }
 
-                if ($cancelOrder) {
+            if ($cancelOrder) {
+                $releasedCredit =
                     $this->storeCredits
                         ->releaseCheckoutReservation(
                             $orderId,
                             'Stripe PaymentIntent was canceled.'
                         );
+
+                if (! $orderWasCancelled) {
+                    $stmt = $this->db->prepare("
+                        UPDATE orders
+                        SET
+                            status = 'cancelled',
+                            payment_status = 'failed',
+                            payment_failed_at = NOW(),
+                            updated_at = NOW()
+                        WHERE id = :id
+                        AND payment_status <> 'paid'
+                    ");
+
+                    $stmt->execute([
+                        'id' => $orderId,
+                    ]);
+
+                    $this->recordOrderEvent(
+                        $orderId,
+                        'payment_cancelled',
+                        'Stripe payment canceled',
+                        $failureMessage
+                        . ' No inventory was deducted.',
+                        (string) (
+                            $order[
+                                'payment_status'
+                            ] ?? 'processing'
+                        ),
+                        'failed',
+                        false
+                    );
+
+                    $this->recordOrderEvent(
+                        $orderId,
+                        'order_cancelled',
+                        'Order cancelled',
+                        'The Stripe PaymentIntent was canceled. Any reserved store credit was released and no inventory was deducted.',
+                        (string) (
+                            $order['status']
+                            ?? 'pending'
+                        ),
+                        'cancelled',
+                        false
+                    );
                 }
 
+                $transitioned =
+                    $newTransactionState !== 'failed'
+                    || ! $orderWasCancelled
+                    || $releasedCredit;
+            } elseif (
+                $newTransactionState !== 'failed'
+            ) {
                 $stmt = $this->db->prepare("
                     UPDATE orders
                     SET
-                        status = CASE
-                            WHEN :cancel_order = 1
-                            THEN 'cancelled'
-                            ELSE status
-                        END,
                         payment_status = 'failed',
                         payment_failed_at = NOW(),
                         updated_at = NOW()
@@ -513,36 +569,22 @@ class StripePaymentFinalizer
 
                 $stmt->execute([
                     'id' => $orderId,
-                    'cancel_order' =>
-                        $cancelOrder ? 1 : 0,
                 ]);
 
                 $this->recordOrderEvent(
                     $orderId,
-                    $cancelOrder
-                        ? 'payment_cancelled'
-                        : 'payment_failed',
-                    $cancelOrder
-                        ? 'Stripe payment canceled'
-                        : 'Stripe payment failed',
+                    'payment_failed',
+                    'Stripe payment failed',
                     $failureMessage
                     . ' No inventory was deducted.',
-                    'processing',
+                    (string) (
+                        $order[
+                            'payment_status'
+                        ] ?? 'processing'
+                    ),
                     'failed',
                     false
                 );
-
-                if ($cancelOrder) {
-                    $this->recordOrderEvent(
-                        $orderId,
-                        'order_cancelled',
-                        'Order cancelled',
-                        'The Stripe PaymentIntent was canceled. No inventory was deducted.',
-                        'pending',
-                        'cancelled',
-                        false
-                    );
-                }
 
                 $transitioned = true;
             }
