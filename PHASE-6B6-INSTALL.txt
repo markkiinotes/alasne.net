@@ -1,0 +1,271 @@
+PHASE 6B.6 - STRIPE OPERATIONS & RECOVERY
+=========================================
+
+PURPOSE
+-------
+Turn Alasne's proven Stripe payment/refund lifecycle into an operable
+Mission Control workflow.
+
+Phase 6B.1 through 6B.5 established:
+- signed/idempotent Stripe webhook ingestion
+- webhook-authoritative payment finalization
+- Stripe refund finalization and failure rollback
+- refund notifications/reconciliation
+- mixed-tender Stripe + store-credit checkout/refunds
+
+Phase 6B.6 adds operational visibility and recovery when a webhook
+fails locally, becomes stale, or never reaches Alasne.
+
+NO NEW DATABASE MIGRATION
+-------------------------
+This phase reuses:
+- stripe_webhook_events
+- payment_transactions
+- orders
+- existing Stripe PaymentIntent/Refund metadata
+
+Raw Stripe webhook payloads are still NOT stored.
+
+MISSION CONTROL
+---------------
+New route:
+
+GET /admin/stripe-operations
+
+Requires:
+permission:orders.manage
+
+The page shows:
+- Stripe mode
+- secret/publishable/webhook configuration presence
+  without displaying any credential
+- total webhook events
+- processed events in the last 24 hours
+- failed webhook events
+- stale processing webhook events
+- stale/recoverable Stripe payment transactions
+- recent webhook ledger entries
+- failed/stale events eligible for retry
+
+MISSION CONTROL NAVIGATION
+--------------------------
+Payments & Compliance now contains:
+
+Stripe Operations & Recovery
+
+The item receives an Attention badge when:
+- a Stripe webhook event is failed
+- a Stripe webhook event has remained processing for at least 5 minutes
+- a Stripe charge/refund transaction is eligible for reconciliation
+
+Mission Control Next Actions also surfaces Stripe recovery work as
+High priority when attention items exist.
+
+FAILED / STALE WEBHOOK RETRY
+----------------------------
+POST /admin/stripe-operations/retry
+
+The action:
+1. requires CSRF
+2. requires the event to exist in stripe_webhook_events
+3. permits only:
+   - status = failed
+   - status = processing and stale for at least 5 minutes
+4. retrieves the canonical Event directly from Stripe's authenticated API
+5. reuses StripeWebhookService claim/retry logic
+6. reuses the existing idempotent payment/refund finalizers
+7. marks the webhook ledger processed or failed using normal logic
+
+A processed event cannot be forcibly re-run through this control.
+
+Because the Event is fetched over Stripe's authenticated API, this path
+does not use or emulate Stripe-Signature. The public webhook endpoint
+continues to require signature verification.
+
+TRANSACTION RECONCILIATION
+--------------------------
+POST /admin/stripe-operations/reconcile
+
+The action requires CSRF and scans up to the operator-selected limit
+(default 100, maximum 500).
+
+Eligible transactions are at least 5 minutes stale and have a Stripe
+provider object ID.
+
+Charges:
+- local pending charges are eligible
+- local failed charges whose order is still unresolved are also eligible
+  so a later successful customer retry can be recovered if its success
+  webhook was missed
+- paid or canceled orders are excluded
+
+Refunds:
+- local pending refunds are eligible
+
+For each eligible Stripe charge:
+- retrieve PaymentIntent from Stripe
+- succeeded -> StripePaymentFinalizer::succeeded()
+- canceled -> StripePaymentFinalizer::canceled()
+- requires_payment_method with a real last_payment_error and a local
+  pending transaction -> StripePaymentFinalizer::failed()
+- all other states remain waiting and are not forced
+
+For each eligible Stripe refund:
+- retrieve Refund from Stripe
+- succeeded/failed/canceled -> StripeRefundFinalizer::finalize()
+- nonterminal status remains waiting
+
+Reconciliation never creates a new PaymentIntent, charge, or refund.
+It only observes an existing Stripe object and applies the same
+idempotent finalizers used by signed webhooks.
+
+FILES ADDED
+-----------
+app/Controllers/Admin/StripeOperationsController.php
+app/Services/Payments/Stripe/StripeOperationsService.php
+app/Views/admin/stripe-operations/index.php
+PHASE-6B6-INSTALL.txt
+
+FILES UPDATED
+-------------
+app/Repositories/StripeWebhookEventRepository.php
+app/Services/Payments/Stripe/StripeWebhookService.php
+app/Services/Admin/MissionControlNavigationService.php
+config/routes.php
+
+LOCAL CODE GATE
+---------------
+From the project root:
+
+php -l app\Controllers\Admin\StripeOperationsController.php
+php -l app\Repositories\StripeWebhookEventRepository.php
+php -l app\Services\Admin\MissionControlNavigationService.php
+php -l app\Services\Payments\Stripe\StripeOperationsService.php
+php -l app\Services\Payments\Stripe\StripeWebhookService.php
+php -l app\Views\admin\stripe-operations\index.php
+php -l config\routes.php
+
+composer dump-autoload -o
+git diff --check
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-stage.ps1
+
+Expected:
+- every PHP lint passes
+- git diff --check prints nothing
+- Stage build verification PASSED.
+
+Do NOT run php alasne migrate for this phase.
+
+ACCEPTANCE A - OPERATIONS DASHBOARD
+-----------------------------------
+Open:
+
+/admin/stripe-operations
+
+Expected:
+- page loads under orders.manage
+- Stripe mode is shown
+- configuration presence is shown without credential values
+- recent webhook events are visible
+- failed/stale event count matches the ledger
+- stale/recoverable transaction count matches local payment state
+- Mission Control Payments & Compliance includes Stripe Operations & Recovery
+
+ACCEPTANCE B - SAFE FAILED EVENT RETRY
+--------------------------------------
+Use an already-finalized, replay-safe Stripe event from sandbox history.
+A successful refund.updated event is ideal.
+
+For controlled acceptance only, mark that event ledger row failed and
+stale WITHOUT changing any order/payment/return state:
+
+UPDATE stripe_webhook_events
+SET
+    status = 'failed',
+    last_error = 'Phase 6B.6 acceptance simulation',
+    updated_at = DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+WHERE event_id = '<existing replay-safe evt_...>';
+
+Open /admin/stripe-operations.
+
+Expected before retry:
+- event appears in Webhook Events Needing Attention
+- failed count increases
+- Retry button is available
+
+Click Retry.
+
+Expected:
+- Alasne fetches the canonical Event from Stripe
+- existing financial state remains unchanged
+- webhook row becomes processed
+- attempts increases by 1
+- last_error clears
+- duplicate credit/inventory/refund effects do not occur
+
+This test changes only operational webhook-ledger state. It does not
+alter the business transaction being replayed.
+
+ACCEPTANCE C - MISSED SUCCESS WEBHOOK RECONCILIATION
+----------------------------------------------------
+Keep Stripe in sandbox/test mode.
+
+1. Stop the Stripe CLI listener.
+2. Create a new normal Stripe test checkout using a refund-friendly
+   successful card such as 4242 4242 4242 4242.
+3. Complete payment in Stripe.
+4. Do not resend the webhook yet.
+5. Verify Stripe reports the PaymentIntent succeeded while Alasne still has:
+   - payment transaction pending
+   - order payment_status processing
+   - no inventory deduction
+6. Wait until the local payment transaction is at least 5 minutes old.
+7. Open /admin/stripe-operations.
+8. Confirm it appears under Stale / Recoverable Transactions.
+9. Click Run Reconciliation.
+
+Expected:
+- Stripe PaymentIntent is fetched directly from Stripe
+- existing payment transaction becomes succeeded
+- order becomes paid
+- amount_paid is correct
+- mixed-tender reservation is consumed if applicable
+- inventory decreases exactly once
+- payment/order notifications remain idempotent
+- reconciliation reports transitioned = 1
+
+Then restart the listener and resend the original
+payment_intent.succeeded event.
+
+Expected:
+- HTTP 200
+- no duplicate inventory movement
+- no duplicate store-credit redemption
+- no duplicate payment amount
+- webhook event processes/replays safely
+
+ACCEPTANCE D - RETRY ACCESS SAFETY
+----------------------------------
+Attempt to use Retry on:
+- a processed event
+- an ignored event
+- a fresh processing event less than 5 minutes old
+
+Expected:
+Alasne refuses the retry with a clear operator message.
+
+SECRETS / SECURITY
+------------------
+Mission Control must never display:
+- STRIPE_SECRET_KEY
+- STRIPE_WEBHOOK_SECRET
+- PaymentIntent client_secret
+- card number
+- CVC
+
+Configuration is displayed only as configured/missing plus test/live mode.
+
+BRANCH SAFETY
+-------------
+Keep Stripe in sandbox/test mode through Phase 6B.6 acceptance.
+Do not merge to master until explicitly requested.
