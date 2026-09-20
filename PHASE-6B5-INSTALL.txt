@@ -1,0 +1,219 @@
+PHASE 6B.5 - MIXED-TENDER STRIPE + STORE CREDIT
+=================================================
+
+PURPOSE
+-------
+Restore Alasne's existing store-credit checkout settlement flow and extend
+the Stripe Payment Element path so a customer can pay one order with:
+
+1. redeemed store credit, plus
+2. Stripe for only the remaining external balance.
+
+This phase intentionally reuses the store-credit reservation and redemption
+system installed by migration 000037. No new database migration is required.
+
+BACKGROUND
+----------
+Store-credit redemption at checkout originally supported partial credit,
+full-credit checkout, reservations, failed-payment release, and tender-aware
+returns. A later notification-lifecycle refactor removed the orchestration
+from CheckoutService while leaving the schema, repository, checkout fields,
+and return allocation system in place.
+
+Phase 6B.5 restores that proven settlement flow into the current checkout
+service and adapts it to Stripe's asynchronous webhook-authoritative model.
+
+SETTLEMENT RULES
+----------------
+For a mixed-tender order:
+
+    order total
+  - reserved store credit
+  = Stripe PaymentIntent amount
+
+Store credit is RESERVED while Stripe payment is pending. It is not consumed
+until a signed payment_intent.succeeded webhook finalizes the payment.
+
+On signed Stripe success, one database transaction:
+- marks the external Stripe charge succeeded
+- consumes the store-credit reservation exactly once
+- records the immutable checkout redemption
+- sets store_credit_reserved_amount to 0
+- sets store_credit_applied_amount to the consumed amount
+- sets external_payment_amount to the successful Stripe charge amount
+- sets amount_paid to the FULL order total
+- marks the order paid
+- reduces inventory exactly once
+
+A replayed success webhook cannot consume credit or inventory twice.
+
+FAILURE / CANCELLATION
+----------------------
+payment_intent.payment_failed remains retryable:
+- no inventory is deducted
+- reserved store credit remains reserved for the same PaymentIntent retry
+
+payment_intent.canceled is terminal:
+- any active store-credit reservation is released
+- reserved_balance is restored
+- no inventory is deducted
+- repeated cancellation is harmless
+
+If Stripe cannot create the PaymentIntent:
+- the local charge transaction is failed
+- the pending order is canceled
+- the store-credit reservation is released
+
+FULL-CREDIT CHECKOUT
+--------------------
+If verified store credit covers the entire reviewed order:
+- checkout bypasses Stripe
+- no Stripe PaymentIntent is created
+- no external payment transaction is created
+- the reservation is consumed through Alasne's store-credit settlement path
+- the full order is marked paid
+- inventory is reduced once
+
+SECURITY
+--------
+Store-credit redemption now re-verifies the checkout email AND postal code
+server-side before any reservation is created. The browser balance lookup is
+not treated as authorization.
+
+STRIPE DISPLAY / NOTIFICATIONS
+------------------------------
+The Stripe payment page displays:
+- Order Total
+- Store Credit Reserved
+- Stripe Payment Due
+
+The payment.captured event uses the successful charge transaction amount as
+{{payment_amount}}. For mixed tender, it therefore reports only the Stripe
+portion, while amount_paid remains the full settled order total.
+
+RETURN / REFUND
+---------------
+Existing StoreCreditRepository refund allocation remains authoritative.
+
+For a mixed-tender refund, the refundable amount is allocated proportionally
+between remaining redeemed store credit and remaining successful external
+payment. Store credit is restored through its immutable ledger and only the
+external allocation is submitted to Stripe.
+
+FILES UPDATED
+-------------
+app/Controllers/CheckoutController.php
+app/Services/Checkout/CheckoutService.php
+app/Services/Checkout/StripeCheckoutService.php
+app/Services/Notifications/PaymentCapturedNotificationPublisher.php
+app/Services/Payments/Stripe/StripePaymentFinalizer.php
+app/Services/Payments/Stripe/StripePaymentIntentService.php
+app/Views/storefront/stripe-payment.php
+app/Views/storefront/checkout-success.php
+
+NO DATABASE MIGRATION
+---------------------
+Migration 000037 already provides:
+- store_credit_reservations
+- orders.store_credit_reserved_amount
+- orders.store_credit_applied_amount
+- orders.store_credit_restored_amount
+- orders.external_payment_amount
+- orders.store_credit_reservation_id
+- orders.store_credit_transaction_id
+
+LOCAL CODE GATE
+---------------
+Run PHP lint on every changed PHP file, then:
+
+composer dump-autoload -o
+git diff --check
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-stage.ps1
+
+Expected:
+Stage build verification PASSED.
+
+ACCEPTANCE A - PARTIAL CREDIT + STRIPE
+--------------------------------------
+Use an existing active customer store-credit account and a new Stripe sandbox
+checkout. Apply a known partial amount of store credit that is less than the
+reviewed order total.
+
+Before confirming Stripe, verify:
+- order payment_status = processing
+- store_credit_reserved_amount = requested/available applied amount
+- store_credit_applied_amount = 0.00
+- external_payment_amount = order total - reserved credit
+- payment transaction amount = external_payment_amount
+- store-credit account balance is unchanged
+- store-credit account reserved_balance increased by the reserved amount
+- reservation status = active
+- Stripe PaymentIntent amount matches external_payment_amount
+
+After the signed payment_intent.succeeded webhook:
+- payment transaction = succeeded
+- order payment_status = paid
+- order amount_paid = full grand_total
+- store_credit_reserved_amount = 0.00
+- store_credit_applied_amount = reserved amount
+- external_payment_amount = successful Stripe charge amount
+- reservation status = consumed
+- exactly one checkout_redemption transaction exists for the order
+- account balance decreased exactly once
+- reserved_balance returned to its pre-checkout value
+- inventory decreased exactly once
+
+Resend the same payment_intent.succeeded event.
+All monetary balances, redemption count, and inventory must remain unchanged.
+
+ACCEPTANCE B - FULL CREDIT
+--------------------------
+Use a reviewed order whose total is fully covered by verified store credit.
+
+Expected:
+- no Stripe PaymentIntent
+- no external charge transaction
+- order payment_status = paid
+- amount_paid = full grand_total
+- store_credit_applied_amount = full grand_total
+- external_payment_amount = 0.00
+- one consumed reservation
+- one checkout_redemption ledger entry
+- inventory decreased once
+
+ACCEPTANCE C - TERMINAL CANCELLATION
+------------------------------------
+Prepare a new partial-credit Stripe order but do not complete payment.
+Cancel the Stripe PaymentIntent in sandbox/CLI and deliver the signed
+payment_intent.canceled event.
+
+Expected:
+- order is cancelled / payment failed
+- reservation status = released
+- order store_credit_reserved_amount = 0.00
+- customer credit balance is unchanged
+- reserved_balance returns to its prior value
+- inventory is unchanged
+
+If payment_intent.payment_failed occurred before cancellation, cancellation
+must still release the reservation.
+
+Replay payment_intent.canceled. Values must remain unchanged.
+
+ACCEPTANCE D - MIXED-TENDER RETURN
+----------------------------------
+Create, approve, and receive a return from the successful mixed-tender order.
+Complete an Original-Payment Refund.
+
+Expected:
+- refund allocation is based on remaining settled tender
+- redeemed store credit is restored through store_credit_transactions
+- only external_refund_amount is submitted to Stripe
+- signed Stripe refund webhook finalizes only the external portion
+- combined restored credit + external refund equals the approved refund
+- replaying Stripe refund events does not double restore credit or refund money
+
+BRANCH SAFETY
+-------------
+Keep Stripe in sandbox/test mode throughout Phase 6B.5.
+Do not copy development Stripe secrets into staging.
