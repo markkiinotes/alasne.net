@@ -235,6 +235,16 @@ class MissionControlNavigationService
                         'orders.manage'
                     ),
                     $this->item(
+                        'Stripe Operations & Recovery',
+                        '/admin/stripe-operations',
+                        'Webhook health, failed-event retry, and stale transaction reconciliation',
+                        $this->badge(
+                            'Attention',
+                            $this->stripeOperationsAttentionCount()
+                        ),
+                        'orders.manage'
+                    ),
+                    $this->item(
                         'Payment Methods',
                         '/admin/payment-methods',
                         'Store payment setup',
@@ -402,6 +412,21 @@ class MissionControlNavigationService
                 'description' => $failed . ' supplier submission(s) failed.',
                 'url' => '/admin/supplier-submissions',
                 'button' => 'Open Submissions',
+            ];
+        }
+
+        $stripeAttention =
+            $this->stripeOperationsAttentionCount();
+
+        if ($stripeAttention > 0) {
+            $actions[] = [
+                'priority' => 'High',
+                'title' => 'Recover Stripe payment operations',
+                'description' =>
+                    $stripeAttention
+                    . ' Stripe event or transaction item(s) need attention.',
+                'url' => '/admin/stripe-operations',
+                'button' => 'Open Stripe Operations',
             ];
         }
 
@@ -721,6 +746,42 @@ class MissionControlNavigationService
              AND next_run_at IS NOT NULL
              AND next_run_at <= NOW()"
         );
+    }
+
+    private function stripeOperationsAttentionCount(): int
+    {
+        $count = 0;
+
+        if ($this->tableExists('stripe_webhook_events')) {
+            $count += $this->countWhere(
+                'stripe_webhook_events',
+                "status = 'failed'
+                 OR (
+                    status = 'processing'
+                    AND updated_at <= DATE_SUB(
+                        NOW(),
+                        INTERVAL 5 MINUTE
+                    )
+                 )"
+            );
+        }
+
+        if ($this->tableExists('payment_transactions')) {
+            $count += $this->countWhere(
+                'payment_transactions',
+                "provider = 'stripe'
+                 AND status = 'pending'
+                 AND type IN ('charge', 'refund')
+                 AND provider_transaction_id IS NOT NULL
+                 AND provider_transaction_id <> ''
+                 AND updated_at <= DATE_SUB(
+                    NOW(),
+                    INTERVAL 5 MINUTE
+                 )"
+            );
+        }
+
+        return $count;
     }
 
     private function openMissionControlAlerts(): int
