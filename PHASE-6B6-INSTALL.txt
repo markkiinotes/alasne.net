@@ -365,3 +365,47 @@ Expected safety behavior confirmed:
 - Alasne did not force a terminal payment state
 - transaction remained recoverable/waiting
 - no payment, inventory, or order side effect was introduced
+
+
+Acceptance C - MISSED SUCCESS WEBHOOK RECONCILIATION: RECOVERY PASSED
+
+Order 67 / WEB-20260920-185036-7590:
+- Stripe PaymentIntent = pi_3UHtZAIRLe4euTCw2HzquNxe
+- local payment transaction 51 remained pending while the Stripe
+  PaymentIntent had already succeeded
+- listener was intentionally off so Alasne received no
+  payment_intent.succeeded webhook
+- local pre-reconciliation state:
+  - order status = pending
+  - payment_status = processing
+  - amount_paid = 0.00
+  - transaction status = pending
+  - transaction amount = 23.85
+
+Mission Control reconciliation:
+- scanned = 2
+- transitioned = 1
+- already_finalized = 0
+- waiting = 1
+- errors = 0
+- transaction 45 remained waiting because Stripe status was
+  requires_payment_method
+- transaction 51 transitioned because Stripe status was succeeded
+
+Post-reconciliation proof for Order 67:
+- order status = paid
+- payment_status = paid
+- amount_paid = 23.85
+- external_payment_amount = 23.85
+- payment_transaction_id = 51
+- transaction 51 status = succeeded
+- exactly one order_sale inventory movement was created
+- no store-credit transaction was created
+- stripe_webhook_events contained no row for
+  pi_3UHtZAIRLe4euTCw2HzquNxe
+
+This proves Stripe Operations reconciliation can recover a successful
+payment even when the original success webhook never reached Alasne.
+
+The late-webhook replay/idempotency portion of Acceptance C remains
+to be proven.
