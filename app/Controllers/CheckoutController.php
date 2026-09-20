@@ -286,7 +286,7 @@ class CheckoutController extends Controller
                     )
                 : null;
 
-            if (
+            $stripeProvider =
                 $paymentMethod
                 && strtolower(
                     trim(
@@ -295,23 +295,104 @@ class CheckoutController extends Controller
                             ?? ''
                         )
                     )
-                ) === 'stripe'
+                ) === 'stripe';
+
+            $stripeNeedsExternalPayment =
+                $stripeProvider;
+
+            if (
+                $stripeProvider
+                && ! empty(
+                    $customerData[
+                        'apply_store_credit'
+                    ]
+                )
             ) {
+                $creditVerification =
+                    $this->storeCredits
+                        ->balanceForCheckoutCredentials(
+                            (int) $store['id'],
+                            (string) (
+                                $customerData['email']
+                                ?? ''
+                            ),
+                            (string) (
+                                $customerData[
+                                    'postal_code'
+                                ] ?? ''
+                            ),
+                            'USD'
+                        );
+
                 if (
-                    ! empty(
-                        $customerData['apply_store_credit']
+                    empty(
+                        $creditVerification['verified']
                     )
-                    || (float) (
-                        $customerData[
-                            'store_credit_amount'
-                        ] ?? 0
-                    ) > 0
                 ) {
                     throw new RuntimeException(
-                        'Store credit cannot yet be combined with Stripe checkout.'
+                        'Store credit could not be verified with the checkout email and postal code.'
                     );
                 }
 
+                $grandTotal = round(
+                    (float) (
+                        $currentQuote[
+                            'grand_total'
+                        ] ?? 0
+                    ),
+                    2
+                );
+
+                $requestedCredit = round(
+                    max(
+                        0,
+                        (float) (
+                            $customerData[
+                                'store_credit_amount'
+                            ] ?? 0
+                        )
+                    ),
+                    2
+                );
+
+                if ($requestedCredit <= 0) {
+                    $requestedCredit =
+                        $grandTotal;
+                }
+
+                $availableCredit = round(
+                    max(
+                        0,
+                        (float) (
+                            $creditVerification[
+                                'available_balance'
+                            ] ?? 0
+                        )
+                    ),
+                    2
+                );
+
+                $creditToApply = round(
+                    min(
+                        $grandTotal,
+                        $requestedCredit,
+                        $availableCredit
+                    ),
+                    2
+                );
+
+                $stripeNeedsExternalPayment =
+                    round(
+                        $grandTotal
+                        - $creditToApply,
+                        2
+                    ) > 0;
+            }
+
+            if (
+                $stripeProvider
+                && $stripeNeedsExternalPayment
+            ) {
                 $stripeContext =
                     $this->stripeCheckoutContext(
                         $currentQuote,
@@ -1619,6 +1700,38 @@ class CheckoutController extends Controller
                             )
                         )
                     ),
+                    'postal_code' => strtolower(
+                        trim(
+                            (string) (
+                                $customerData[
+                                    'postal_code'
+                                ] ?? ''
+                            )
+                        )
+                    ),
+                    'apply_store_credit' =>
+                        ! empty(
+                            $customerData[
+                                'apply_store_credit'
+                            ]
+                        ),
+                    'store_credit_amount' =>
+                        number_format(
+                            round(
+                                max(
+                                    0,
+                                    (float) (
+                                        $customerData[
+                                            'store_credit_amount'
+                                        ] ?? 0
+                                    )
+                                ),
+                                2
+                            ),
+                            2,
+                            '.',
+                            ''
+                        ),
                 ],
                 JSON_UNESCAPED_SLASHES
             ) ?: ''
@@ -1674,6 +1787,9 @@ class CheckoutController extends Controller
                 payment_method_name,
                 currency,
                 grand_total,
+                store_credit_reserved_amount,
+                store_credit_applied_amount,
+                external_payment_amount,
                 amount_paid,
                 paid_at,
                 created_at
@@ -1714,7 +1830,7 @@ class CheckoutController extends Controller
             $orderId;
 
         $_SESSION['checkout_success'] =
-            'Your Stripe payment was confirmed and your order has been placed successfully.';
+            'Your payment was confirmed and your order has been placed successfully.';
     }
 
     private function clearStripeCheckoutState(): void
