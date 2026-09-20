@@ -409,3 +409,30 @@ payment even when the original success webhook never reached Alasne.
 
 The late-webhook replay/idempotency portion of Acceptance C remains
 to be proven.
+
+
+Acceptance C - MISSED SUCCESS WEBHOOK RECONCILIATION: FULLY PASSED
+
+Late original webhook replay:
+- event = evt_3UHtZAIRLe4euTCw2bPMjNvi
+- type = payment_intent.succeeded
+- PaymentIntent = pi_3UHtZAIRLe4euTCw2HzquNxe
+- Order 67 / WEB-20260920-185036-7590
+- Stripe CLI resend succeeded
+- Alasne processed the late event after reconciliation had already finalized the order
+
+Post-replay idempotency proof:
+- order status remained paid
+- payment_status remained paid
+- amount_paid remained 23.85
+- external_payment_amount remained 23.85
+- payment transaction 51 remained succeeded for 23.85
+- order_sale inventory movement count remained 1
+- store-credit transaction count remained 0
+- webhook ledger now contains exactly one processed
+  payment_intent.succeeded row for the PaymentIntent
+- webhook attempts = 1
+- last_error = NULL
+
+This proves a late success webhook arriving after Mission Control
+reconciliation does not duplicate financial or inventory effects.
