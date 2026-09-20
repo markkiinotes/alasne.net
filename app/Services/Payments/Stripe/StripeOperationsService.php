@@ -271,6 +271,12 @@ class StripeOperationsService
                             $paymentIntent
                                 ->last_payment_error
                         )
+                        && strtolower(
+                            (string) (
+                                $row['status']
+                                ?? ''
+                            )
+                        ) !== 'failed'
                     ) {
                         $finalized =
                             $this->paymentFinalizer
@@ -422,8 +428,21 @@ class StripeOperationsService
             INNER JOIN orders o
                 ON o.id = pt.order_id
             WHERE pt.provider = 'stripe'
-            AND pt.status = 'pending'
-            AND pt.type IN ('charge', 'refund')
+            AND (
+                (
+                    pt.type = 'charge'
+                    AND pt.status IN (
+                        'pending',
+                        'failed'
+                    )
+                    AND o.payment_status <> 'paid'
+                    AND o.status <> 'cancelled'
+                )
+                OR (
+                    pt.type = 'refund'
+                    AND pt.status = 'pending'
+                )
+            )
             AND pt.provider_transaction_id IS NOT NULL
             AND pt.provider_transaction_id <> ''
             AND pt.updated_at <= DATE_SUB(
@@ -443,13 +462,28 @@ class StripeOperationsService
     {
         $stmt = $this->db->query("
             SELECT COUNT(*)
-            FROM payment_transactions
-            WHERE provider = 'stripe'
-            AND status = 'pending'
-            AND type IN ('charge', 'refund')
-            AND provider_transaction_id IS NOT NULL
-            AND provider_transaction_id <> ''
-            AND updated_at <= DATE_SUB(
+            FROM payment_transactions pt
+            INNER JOIN orders o
+                ON o.id = pt.order_id
+            WHERE pt.provider = 'stripe'
+            AND (
+                (
+                    pt.type = 'charge'
+                    AND pt.status IN (
+                        'pending',
+                        'failed'
+                    )
+                    AND o.payment_status <> 'paid'
+                    AND o.status <> 'cancelled'
+                )
+                OR (
+                    pt.type = 'refund'
+                    AND pt.status = 'pending'
+                )
+            )
+            AND pt.provider_transaction_id IS NOT NULL
+            AND pt.provider_transaction_id <> ''
+            AND pt.updated_at <= DATE_SUB(
                 NOW(),
                 INTERVAL 5 MINUTE
             )
