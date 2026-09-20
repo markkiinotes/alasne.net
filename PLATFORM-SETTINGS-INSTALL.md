@@ -163,7 +163,8 @@ C:\xampp\htdocs\alasne.net
 
 run:
 
-git pull origin feature/platform-settings-foundation
+git fetch origin
+git switch --track origin/feature/platform-settings-foundation
 
 php -l database\migrations\000056_create_platform_settings.php
 php -l app\Repositories\PlatformSettingRepository.php
