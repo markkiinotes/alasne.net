@@ -51,7 +51,26 @@ ACCEPTANCE GATE
    - return refund_status = succeeded
    - return resolution_status = completed
 7. Resend the same refund event. Totals must not increase again.
-8. Failed/canceled Refund events must not increase refunded totals.
+8. Failed/canceled Refund events must not leave refunded totals increased.
+   Stripe's asynchronous-failure card can report a refund as succeeded
+   before later changing it to failed, so Alasne must reverse the earlier
+   local refund accounting exactly once.
+
+NEGATIVE-PATH SANDBOX TEST
+--------------------------
+Use Stripe test card 4000 0000 0000 5126 on a NEW checkout. The payment
+succeeds. When that order is refunded, Stripe initially reports the refund
+as succeeded and later transitions it to failed with refund.failed.
+
+Expected final state after refund.failed:
+- refund transaction = failed
+- parent charge refunded_amount returns to its pre-refund value
+- order amount_refunded returns to its pre-refund value
+- order payment_status returns to paid or the correct partial-refund state
+- return refund_status = failed
+- return resolution_status = partial_failed
+- inventory remains unaffected by the payment-refund rollback
+- replaying refund.failed changes nothing a second time
 
 SECURITY / CONSISTENCY
 ----------------------
