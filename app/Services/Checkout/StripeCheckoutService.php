@@ -58,6 +58,12 @@ class StripeCheckoutService
             throw new RuntimeException('Cart is empty.');
         }
 
+        $applyStoreCredit = filter_var(
+            $customerData['apply_store_credit']
+                ?? false,
+            FILTER_VALIDATE_BOOL
+        );
+
         $checkoutKey = trim($checkoutKey);
 
         if ($checkoutKey === '') {
@@ -112,10 +118,60 @@ class StripeCheckoutService
                 );
             }
 
+            $verifiedCreditCustomerId = null;
+
+            if ($applyStoreCredit) {
+                $creditVerification =
+                    $this->storeCredits
+                        ->balanceForCheckoutCredentials(
+                            $storeId,
+                            (string) (
+                                $customerData['email']
+                                ?? ''
+                            ),
+                            (string) (
+                                $customerData[
+                                    'postal_code'
+                                ] ?? ''
+                            ),
+                            'USD'
+                        );
+
+                if (
+                    empty(
+                        $creditVerification['verified']
+                    )
+                    || (int) (
+                        $creditVerification[
+                            'customer_id'
+                        ] ?? 0
+                    ) <= 0
+                ) {
+                    throw new RuntimeException(
+                        'Store credit could not be verified with the checkout email and postal code.'
+                    );
+                }
+
+                $verifiedCreditCustomerId =
+                    (int) $creditVerification[
+                        'customer_id'
+                    ];
+            }
+
             $customerId = $this->findOrCreateCustomer(
                 $storeId,
                 $customerData
             );
+
+            if (
+                $verifiedCreditCustomerId !== null
+                && $customerId
+                    !== $verifiedCreditCustomerId
+            ) {
+                throw new RuntimeException(
+                    'Store credit verification no longer matches the checkout customer.'
+                );
+            }
 
             $validatedItems = [];
             $subtotal = 0.0;
@@ -215,12 +271,6 @@ class StripeCheckoutService
                     'Order total must be greater than zero.'
                 );
             }
-
-            $applyStoreCredit = filter_var(
-                $customerData['apply_store_credit']
-                    ?? false,
-                FILTER_VALIDATE_BOOL
-            );
 
             $requestedCredit = $applyStoreCredit
                 ? round(
