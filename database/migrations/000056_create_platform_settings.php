@@ -79,21 +79,11 @@ return new class($this->db) extends Migration
             DROP TABLE IF EXISTS platform_settings
         ");
 
-        $permissionId = $this->permissionId();
-
-        if ($permissionId !== null) {
-            $stmt = $this->db->prepare("
-                DELETE FROM permission_role
-                WHERE permission_id = ?
-            ");
-            $stmt->execute([$permissionId]);
-
-            $stmt = $this->db->prepare("
-                DELETE FROM permissions
-                WHERE id = ?
-            ");
-            $stmt->execute([$permissionId]);
-        }
+        /*
+         * Intentionally preserve settings.manage.
+         * The permission may predate this migration in an
+         * installation that seeded admin permissions manually.
+         */
     }
 
     private function seedPermission(): void
