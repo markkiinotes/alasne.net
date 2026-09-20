@@ -10,6 +10,7 @@ use App\Controllers\Admin\EmailOutboxController;
 use App\Controllers\Admin\InventoryController;
 use App\Controllers\Admin\OrderController;
 use App\Controllers\Admin\PaymentMethodController;
+use App\Controllers\Admin\PlatformSettingsController;
 use App\Controllers\Admin\CarrierIntegrationController;
 use App\Controllers\Admin\ReturnController;
 use App\Controllers\Admin\ReturnPolicyController;
@@ -100,6 +101,22 @@ $router
     ->middleware('auth')
     ->middleware('permission:orders.manage');
 
+
+$router
+    ->get(
+        '/admin/settings',
+        [PlatformSettingsController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:settings.manage');
+
+$router
+    ->post(
+        '/admin/settings',
+        [PlatformSettingsController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:settings.manage');
 
 $router
     ->get(
