@@ -99,22 +99,23 @@ $customerName = trim(
         </div>
 
         <div class="confirmation-payment-note">
+            Order settlement completed for
             <strong>
-                <?= $escape(
-                    $order['payment_method_name']
-                    ?? 'Payment'
+                $<?= number_format(
+                    (float) (
+                        $order['amount_paid']
+                        ?? $order['grand_total']
+                        ?? 0
+                    ),
+                    2
                 ) ?>
+                USD
             </strong>
-            processed
-            $<?= number_format(
-                (float) (
-                    $order['amount_paid']
-                    ?? $order['grand_total']
-                    ?? 0
-                ),
-                2
-            ) ?>
-            USD.
+            using
+            <?= $escape(
+                $order['payment_method_name']
+                ?? 'Payment'
+            ) ?>.
         </div>
     </section>
 
@@ -209,6 +210,46 @@ $customerName = trim(
                         ) ?>
                     </td>
                 </tr>
+
+                <?php
+                $storeCreditApplied = (float) (
+                    $order[
+                        'store_credit_applied_amount'
+                    ] ?? 0
+                );
+
+                $externalPayment = (float) (
+                    $order[
+                        'external_payment_amount'
+                    ] ?? 0
+                );
+                ?>
+
+                <?php if ($storeCreditApplied > 0): ?>
+                    <tr>
+                        <th>Store Credit</th>
+
+                        <td>
+                            $<?= number_format(
+                                $storeCreditApplied,
+                                2
+                            ) ?>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+
+                <?php if ($externalPayment > 0): ?>
+                    <tr>
+                        <th>External Payment</th>
+
+                        <td>
+                            $<?= number_format(
+                                $externalPayment,
+                                2
+                            ) ?>
+                        </td>
+                    </tr>
+                <?php endif; ?>
 
                 <tr>
                     <th>Total Paid</th>
