@@ -50,6 +50,30 @@ class StripeWebhookService
             $secret
         );
 
+        return $this->processEvent($event);
+    }
+
+    /**
+     * Reprocess an Event fetched directly from Stripe's
+     * authenticated API. This intentionally bypasses signature
+     * verification because the object did not arrive over the
+     * public webhook endpoint; all normal environment checks,
+     * claim/retry rules, finalizers, and idempotency protections
+     * still apply.
+     *
+     * @return array<string, mixed>
+     */
+    public function reprocess(Event $event): array
+    {
+        return $this->processEvent($event);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function processEvent(
+        Event $event
+    ): array {
         $this->assertEnvironmentMatches(
             $event
         );
