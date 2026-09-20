@@ -8,6 +8,7 @@ use App\Repositories\StripeWebhookEventRepository;
 use RuntimeException;
 use Stripe\Event;
 use Stripe\PaymentIntent;
+use Stripe\Refund;
 use Stripe\Webhook;
 
 class StripeWebhookService
@@ -16,13 +17,17 @@ class StripeWebhookService
         'payment_intent.succeeded',
         'payment_intent.payment_failed',
         'payment_intent.canceled',
+        'refund.created',
+        'refund.updated',
+        'refund.failed',
         'charge.refunded',
     ];
 
     public function __construct(
         private StripeClientFactory $clients,
         private StripeWebhookEventRepository $events,
-        private StripePaymentFinalizer $finalizer
+        private StripePaymentFinalizer $finalizer,
+        private StripeRefundFinalizer $refundFinalizer
     ) {
     }
 
@@ -123,14 +128,21 @@ class StripeWebhookService
                     $this->paymentIntent($event)
                 ),
 
+            'refund.created',
+            'refund.updated',
+            'refund.failed' =>
+                $this->refundFinalizer->finalize(
+                    $this->refund($event)
+                ),
+
             /*
-             * Stripe refund finalization will be connected to the
-             * existing Alasne returns/refund workflow in the next
-             * Stripe slice. Keep recording the signed event now.
+             * charge.refunded is an aggregate Charge event and is
+             * retained for audit visibility. Refund object events
+             * own Alasne's refund state transition.
              */
             'charge.refunded' => [
                 'recorded' => true,
-                'refund_finalizer' => 'pending',
+                'refund_finalizer' => 'refund_object_events',
             ],
 
             default => [
@@ -148,6 +160,21 @@ class StripeWebhookService
         if (! $object instanceof PaymentIntent) {
             throw new RuntimeException(
                 'Stripe webhook does not contain a PaymentIntent.'
+            );
+        }
+
+        return $object;
+    }
+
+    private function refund(
+        Event $event
+    ): Refund {
+        $object = $event->data->object
+            ?? null;
+
+        if (! $object instanceof Refund) {
+            throw new RuntimeException(
+                'Stripe webhook does not contain a Refund.'
             );
         }
 
