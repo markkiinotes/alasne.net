@@ -421,6 +421,48 @@ class PaymentTransactionRepository
         return $stmt->rowCount() === 1;
     }
 
+    public function subtractRefundedAmount(
+        int $chargeTransactionId,
+        float $amount
+    ): bool {
+        $amount = round(
+            max(0, $amount),
+            2
+        );
+
+        if ($amount <= 0) {
+            throw new RuntimeException(
+                'Refund reversal amount must be greater than zero.'
+            );
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE payment_transactions
+            SET
+                refunded_amount =
+                    GREATEST(
+                        0,
+                        refunded_amount - :amount
+                    ),
+                updated_at = NOW()
+            WHERE id = :id
+            AND type = 'charge'
+            AND status = 'succeeded'
+        ");
+
+        $stmt->execute([
+            'id' => $chargeTransactionId,
+            'amount' => number_format(
+                $amount,
+                2,
+                '.',
+                ''
+            ),
+        ]);
+
+        return $stmt->rowCount() === 1;
+    }
+
     private function encodeJson(
         mixed $value
     ): ?string {
