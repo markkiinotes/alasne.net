@@ -36,6 +36,7 @@ use App\Controllers\Admin\ShippingMethodController;
 use App\Controllers\Admin\TaxRuleController;
 use App\Controllers\Admin\StoreController;
 use App\Controllers\Admin\StoreCreditController;
+use App\Controllers\Admin\StripeOperationsController;
 use App\Controllers\Admin\SupplierController;
 use App\Controllers\Admin\SupplierPerformanceController;
 use App\Controllers\Admin\TrackingReconciliationController;
@@ -95,6 +96,31 @@ $router
     ->get(
         '/admin/dropshipping/export',
         [DropshippingOperationsController::class, 'export']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+
+$router
+    ->get(
+        '/admin/stripe-operations',
+        [StripeOperationsController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/stripe-operations/retry',
+        [StripeOperationsController::class, 'retryEvent']
+    )
+    ->middleware('auth')
+    ->middleware('permission:orders.manage');
+
+$router
+    ->post(
+        '/admin/stripe-operations/reconcile',
+        [StripeOperationsController::class, 'reconcile']
     )
     ->middleware('auth')
     ->middleware('permission:orders.manage');
