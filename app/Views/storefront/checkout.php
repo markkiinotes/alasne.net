@@ -35,6 +35,53 @@ $selectedScenario = strtolower(
     )
 );
 
+$storeCreditVerified = ! empty(
+    $storeCredit['verified']
+);
+
+$availableStoreCredit = round(
+    max(
+        0,
+        (float) (
+            $storeCredit[
+                'available_balance'
+            ] ?? 0
+        )
+    ),
+    2
+);
+
+$applyStoreCredit =
+    $storeCreditVerified
+    && $availableStoreCredit > 0
+    && ! empty(
+        $old['apply_store_credit']
+    );
+
+$requestedStoreCredit = round(
+    max(
+        0,
+        (float) (
+            $old['store_credit_amount']
+            ?? 0
+        )
+    ),
+    2
+);
+
+if (
+    $applyStoreCredit
+    && $requestedStoreCredit <= 0
+) {
+    $requestedStoreCredit =
+        $availableStoreCredit;
+}
+
+$requestedStoreCredit = min(
+    $requestedStoreCredit,
+    $availableStoreCredit
+);
+
 $selectedShippingPrice = 0.0;
 
 foreach ($shippingMethods as $method) {
@@ -529,6 +576,137 @@ $taxRate = $quoteReady
                     </div>
                 </div>
 
+                <div
+                    id="checkout-store-credit-panel"
+                    class="checkout-security-note"
+                >
+                    <strong>Store Credit</strong>
+
+                    <span>
+                        Verify the checkout email and postal code,
+                        then apply any available store credit before
+                        the remaining balance is sent to the selected
+                        payment provider.
+                    </span>
+
+                    <p
+                        id="store-credit-status"
+                        class="checkout-note"
+                        aria-live="polite"
+                    >
+                        <?php if (
+                            $storeCreditVerified
+                            && $availableStoreCredit > 0
+                        ): ?>
+                            Available store credit:
+                            $<?= number_format(
+                                $availableStoreCredit,
+                                2
+                            ) ?> USD.
+                        <?php elseif ($storeCreditVerified): ?>
+                            No available store credit was found for
+                            these checkout details.
+                        <?php else: ?>
+                            Enter the checkout email and postal code,
+                            then check your balance.
+                        <?php endif; ?>
+                    </p>
+
+                    <p>
+                        <button
+                            type="button"
+                            id="store-credit-check-button"
+                            class="checkout-link-button"
+                        >
+                            Check Store Credit
+                        </button>
+                    </p>
+
+                    <label
+                        id="store-credit-toggle-wrap"
+                        class="payment-method-option"
+                        <?= (
+                            $storeCreditVerified
+                            && $availableStoreCredit > 0
+                        )
+                            ? ''
+                            : 'hidden' ?>
+                    >
+                        <input
+                            id="apply_store_credit"
+                            type="checkbox"
+                            name="apply_store_credit"
+                            value="1"
+                            <?= $applyStoreCredit
+                                ? 'checked'
+                                : '' ?>
+                        >
+
+                        <span
+                            class="payment-method-content"
+                        >
+                            <strong>
+                                Use Store Credit
+                            </strong>
+
+                            <small
+                                id="store-credit-available"
+                            >
+                                Available:
+                                $<?= number_format(
+                                    $availableStoreCredit,
+                                    2
+                                ) ?> USD
+                            </small>
+                        </span>
+                    </label>
+
+                    <div
+                        id="store-credit-amount-panel"
+                        class="checkout-grid"
+                        <?= $applyStoreCredit
+                            ? ''
+                            : 'hidden' ?>
+                    >
+                        <div class="form-group">
+                            <label for="store_credit_amount">
+                                Amount to Apply
+                            </label>
+
+                            <input
+                                id="store_credit_amount"
+                                type="number"
+                                name="store_credit_amount"
+                                min="0"
+                                max="<?= $escape(
+                                    number_format(
+                                        $availableStoreCredit,
+                                        2,
+                                        '.',
+                                        ''
+                                    )
+                                ) ?>"
+                                step="0.01"
+                                value="<?= $escape(
+                                    number_format(
+                                        $requestedStoreCredit,
+                                        2,
+                                        '.',
+                                        ''
+                                    )
+                                ) ?>"
+                                inputmode="decimal"
+                            >
+
+                            <small>
+                                Store credit is reserved when the
+                                order is prepared and consumed only
+                                after payment settlement succeeds.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
                 <?php if (empty($paymentMethods)): ?>
                     <div
                         class="storefront-alert danger"
@@ -832,6 +1010,46 @@ $taxRate = $quoteReady
                         ) ?>
                     </td>
                 </tr>
+
+                <tr
+                    id="checkout-store-credit-row"
+                    <?= $applyStoreCredit
+                        ? ''
+                        : 'hidden' ?>
+                >
+                    <th>Store Credit</th>
+
+                    <td
+                        id="checkout-store-credit-total"
+                    >
+                        -$<?= number_format(
+                            $requestedStoreCredit,
+                            2
+                        ) ?>
+                    </td>
+                </tr>
+
+                <tr
+                    id="checkout-remaining-payment-row"
+                    <?= $applyStoreCredit
+                        ? ''
+                        : 'hidden' ?>
+                >
+                    <th>Remaining Payment</th>
+
+                    <td
+                        id="checkout-remaining-payment-total"
+                    >
+                        $<?= number_format(
+                            max(
+                                0,
+                                $displayGrandTotal
+                                - $requestedStoreCredit
+                            ),
+                            2
+                        ) ?>
+                    </td>
+                </tr>
             </table>
 
             <p
@@ -960,6 +1178,84 @@ document.addEventListener('DOMContentLoaded', () => {
     const paymentInputs = document.querySelectorAll(
         'input[name="payment_method_id"]'
     );
+
+    const storeCreditCheckButton =
+        document.getElementById(
+            'store-credit-check-button'
+        );
+
+    const storeCreditToggleWrap =
+        document.getElementById(
+            'store-credit-toggle-wrap'
+        );
+
+    const applyStoreCredit =
+        document.getElementById(
+            'apply_store_credit'
+        );
+
+    const storeCreditAmount =
+        document.getElementById(
+            'store_credit_amount'
+        );
+
+    const storeCreditAmountPanel =
+        document.getElementById(
+            'store-credit-amount-panel'
+        );
+
+    const storeCreditStatus =
+        document.getElementById(
+            'store-credit-status'
+        );
+
+    const storeCreditAvailable =
+        document.getElementById(
+            'store-credit-available'
+        );
+
+    const storeCreditRow =
+        document.getElementById(
+            'checkout-store-credit-row'
+        );
+
+    const storeCreditTotal =
+        document.getElementById(
+            'checkout-store-credit-total'
+        );
+
+    const remainingPaymentRow =
+        document.getElementById(
+            'checkout-remaining-payment-row'
+        );
+
+    const remainingPaymentTotal =
+        document.getElementById(
+            'checkout-remaining-payment-total'
+        );
+
+    const checkoutEmail =
+        document.getElementById('email');
+
+    const checkoutPostalCode =
+        document.getElementById('postal_code');
+
+    let verifiedStoreCredit =
+        <?= $storeCreditVerified
+            ? 'true'
+            : 'false' ?>;
+
+    let availableStoreCredit =
+        Number(
+            <?= json_encode(
+                number_format(
+                    $availableStoreCredit,
+                    2,
+                    '.',
+                    ''
+                )
+            ) ?>
+        );
 
     const taxAddressInputs = [
         document.getElementById('state'),
@@ -1380,6 +1676,310 @@ document.addEventListener('DOMContentLoaded', () => {
         ).format(amount)
     );
 
+    const currentOrderTotal = () => {
+        if (quoteCurrent) {
+            return quotedGrandTotal;
+        }
+
+        return subtotal + selectedShipping();
+    };
+
+    const clampStoreCreditAmount = () => {
+        if (! storeCreditAmount) {
+            return 0;
+        }
+
+        const raw = Number(
+            storeCreditAmount.value || 0
+        );
+
+        const maximum = Math.max(
+            0,
+            Math.min(
+                availableStoreCredit,
+                currentOrderTotal()
+            )
+        );
+
+        const amount = Math.max(
+            0,
+            Math.min(
+                Number.isFinite(raw) ? raw : 0,
+                maximum
+            )
+        );
+
+        storeCreditAmount.max =
+            maximum.toFixed(2);
+
+        if (
+            Math.abs(raw - amount) > 0.001
+        ) {
+            storeCreditAmount.value =
+                amount.toFixed(2);
+        }
+
+        return amount;
+    };
+
+    const updateStoreCreditPreview = () => {
+        const active =
+            Boolean(
+                applyStoreCredit
+                && applyStoreCredit.checked
+                && verifiedStoreCredit
+                && availableStoreCredit > 0
+            );
+
+        if (storeCreditAmountPanel) {
+            storeCreditAmountPanel.hidden =
+                ! active;
+        }
+
+        if (! active) {
+            if (storeCreditRow) {
+                storeCreditRow.hidden = true;
+            }
+
+            if (remainingPaymentRow) {
+                remainingPaymentRow.hidden = true;
+            }
+
+            return;
+        }
+
+        const amount =
+            clampStoreCreditAmount();
+
+        const remaining = Math.max(
+            0,
+            currentOrderTotal() - amount
+        );
+
+        if (storeCreditTotal) {
+            storeCreditTotal.textContent =
+                '-' + money(amount);
+        }
+
+        if (remainingPaymentTotal) {
+            remainingPaymentTotal.textContent =
+                money(remaining);
+        }
+
+        if (storeCreditRow) {
+            storeCreditRow.hidden = false;
+        }
+
+        if (remainingPaymentRow) {
+            remainingPaymentRow.hidden = false;
+        }
+    };
+
+    const setStoreCreditVerification = (
+        verified,
+        available,
+        message
+    ) => {
+        verifiedStoreCredit = Boolean(verified);
+
+        availableStoreCredit = Math.max(
+            0,
+            Number(available || 0)
+        );
+
+        if (storeCreditStatus) {
+            storeCreditStatus.textContent =
+                message || (
+                    verifiedStoreCredit
+                    && availableStoreCredit > 0
+                        ? 'Available store credit: '
+                            + money(
+                                availableStoreCredit
+                            )
+                            + '.'
+                        : 'No available store credit was found for these checkout details.'
+                );
+        }
+
+        if (storeCreditAvailable) {
+            storeCreditAvailable.textContent =
+                'Available: '
+                + money(
+                    availableStoreCredit
+                )
+                + ' USD';
+        }
+
+        const usable =
+            verifiedStoreCredit
+            && availableStoreCredit > 0;
+
+        if (storeCreditToggleWrap) {
+            storeCreditToggleWrap.hidden =
+                ! usable;
+        }
+
+        if (storeCreditAmount) {
+            storeCreditAmount.max =
+                availableStoreCredit.toFixed(2);
+        }
+
+        if (! usable && applyStoreCredit) {
+            applyStoreCredit.checked = false;
+        }
+
+        updateStoreCreditPreview();
+    };
+
+    const clearStoreCreditVerification = () => {
+        if (! verifiedStoreCredit) {
+            return;
+        }
+
+        verifiedStoreCredit = false;
+        availableStoreCredit = 0;
+
+        if (applyStoreCredit) {
+            applyStoreCredit.checked = false;
+        }
+
+        if (storeCreditToggleWrap) {
+            storeCreditToggleWrap.hidden = true;
+        }
+
+        if (storeCreditAmountPanel) {
+            storeCreditAmountPanel.hidden = true;
+        }
+
+        if (storeCreditStatus) {
+            storeCreditStatus.textContent =
+                'Checkout email or postal code changed. Check store credit again.';
+        }
+
+        updateStoreCreditPreview();
+    };
+
+    const checkStoreCreditBalance = async () => {
+        if (
+            ! storeCreditCheckButton
+            || ! checkoutEmail
+            || ! checkoutPostalCode
+        ) {
+            return;
+        }
+
+        const email =
+            checkoutEmail.value.trim();
+
+        const postalCode =
+            checkoutPostalCode.value.trim();
+
+        if (
+            email === ''
+            || postalCode === ''
+        ) {
+            setStoreCreditVerification(
+                false,
+                0,
+                'Enter the checkout email and postal code before checking store credit.'
+            );
+
+            return;
+        }
+
+        storeCreditCheckButton.disabled = true;
+        storeCreditCheckButton.textContent =
+            'Checking...';
+
+        try {
+            const body =
+                new URLSearchParams();
+
+            body.set(
+                '_csrf_token',
+                <?= json_encode($csrf_token) ?>
+            );
+
+            body.set('email', email);
+            body.set(
+                'postal_code',
+                postalCode
+            );
+
+            const response = await fetch(
+                <?= json_encode(
+                    '/store/'
+                    . $store['slug']
+                    . '/checkout/store-credit'
+                ) ?>,
+                {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        'Content-Type':
+                            'application/x-www-form-urlencoded;charset=UTF-8',
+                        'Accept':
+                            'application/json'
+                    },
+                    body: body.toString()
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                ! response.ok
+                || ! result.ok
+            ) {
+                throw new Error(
+                    result.message
+                    || 'Unable to check store credit.'
+                );
+            }
+
+            setStoreCreditVerification(
+                Boolean(result.verified),
+                Number(
+                    result.available_balance
+                    || 0
+                ),
+                result.verified
+                    ? (
+                        Number(
+                            result.available_balance
+                            || 0
+                        ) > 0
+                            ? 'Available store credit: '
+                                + money(
+                                    Number(
+                                        result.available_balance
+                                        || 0
+                                    )
+                                )
+                                + ' USD.'
+                            : 'No available store credit was found for these checkout details.'
+                    )
+                    : result.message
+            );
+        } catch (error) {
+            setStoreCreditVerification(
+                false,
+                0,
+                error instanceof Error
+                    ? error.message
+                    : 'Unable to check store credit.'
+            );
+        } finally {
+            storeCreditCheckButton.disabled =
+                false;
+
+            storeCreditCheckButton.textContent =
+                'Check Store Credit';
+        }
+    };
+
     const selectedShipping = () => {
         const selected = document.querySelector(
             'input[name="shipping_method_id"]:checked'
@@ -1416,6 +2016,8 @@ document.addEventListener('DOMContentLoaded', () => {
             estimatedOutput.textContent =
                 money(subtotal + shipping);
         }
+
+        updateStoreCreditPreview();
 
         if (taxNote) {
             taxNote.textContent =
@@ -1487,6 +2089,63 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     });
 
+    if (storeCreditCheckButton) {
+        storeCreditCheckButton.addEventListener(
+            'click',
+            checkStoreCreditBalance
+        );
+    }
+
+    if (applyStoreCredit) {
+        applyStoreCredit.addEventListener(
+            'change',
+            () => {
+                if (
+                    applyStoreCredit.checked
+                    && storeCreditAmount
+                    && Number(
+                        storeCreditAmount.value
+                        || 0
+                    ) <= 0
+                ) {
+                    storeCreditAmount.value =
+                        Math.min(
+                            availableStoreCredit,
+                            currentOrderTotal()
+                        ).toFixed(2);
+                }
+
+                updateStoreCreditPreview();
+            }
+        );
+    }
+
+    if (storeCreditAmount) {
+        storeCreditAmount.addEventListener(
+            'input',
+            updateStoreCreditPreview
+        );
+
+        storeCreditAmount.addEventListener(
+            'change',
+            updateStoreCreditPreview
+        );
+    }
+
+    [checkoutEmail, checkoutPostalCode]
+        .filter(Boolean)
+        .forEach((input) => {
+            input.addEventListener(
+                'input',
+                clearStoreCreditVerification
+            );
+
+            input.addEventListener(
+                'change',
+                clearStoreCreditVerification
+            );
+        });
+
     if (quoteCurrent) {
         if (reviewButton) {
             reviewButton.hidden = true;
@@ -1515,10 +2174,13 @@ document.addEventListener('DOMContentLoaded', () => {
             estimatedOutput.textContent =
                 money(quotedGrandTotal);
         }
+
+        updateStoreCreditPreview();
     } else {
         showUnreviewedTotal();
     }
 
     updatePaymentPanel();
+    updateStoreCreditPreview();
 });
 </script>
