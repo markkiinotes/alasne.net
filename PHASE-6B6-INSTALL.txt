@@ -331,3 +331,37 @@ Idempotency proof after retry:
 - reserved_balance remained 0.00
 - dashboard returned to failed events = 0
 - needs attention returned to 1
+
+
+ADDITIONAL ACCEPTANCE CHECKPOINTS - 2026-09-20
+----------------------------------------------
+Local/staging build gate: PASSED
+
+Observed:
+- all seven Phase 6B.6 PHP lint checks passed
+- Composer optimized autoload generated successfully
+- git diff --check returned no output
+- staging source synchronization completed with 0 failed files
+- staging Composer/platform requirements passed
+- source-tree parity passed
+- Stage build verification PASSED
+- staging .env, vendor, and storage were preserved
+
+Safe nonterminal reconciliation: PASSED
+
+Existing stale transaction:
+- payment transaction 45
+- order WEB-20260920-131703-6971
+- Stripe PaymentIntent status = requires_payment_method
+
+Mission Control reconciliation result:
+- scanned = 1
+- transitioned = 0
+- already_finalized = 0
+- waiting = 1
+- errors = 0
+
+Expected safety behavior confirmed:
+- Alasne did not force a terminal payment state
+- transaction remained recoverable/waiting
+- no payment, inventory, or order side effect was introduced
