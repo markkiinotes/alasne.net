@@ -88,8 +88,15 @@ class PaymentCapturedNotificationPublisher
                 o.currency,
                 o.grand_total,
                 o.amount_paid,
+                o.store_credit_applied_amount,
+                o.external_payment_amount,
                 o.paid_at,
                 o.created_at,
+
+                pt.amount AS captured_amount,
+                pt.currency AS captured_currency,
+                pt.provider AS captured_provider,
+                pt.status AS captured_status,
 
                 s.id AS store_id,
                 s.name AS store_name,
@@ -100,6 +107,11 @@ class PaymentCapturedNotificationPublisher
                 c.last_name AS customer_last_name,
                 c.email AS customer_email
             FROM orders o
+            INNER JOIN payment_transactions pt
+                ON pt.id = :payment_transaction_id
+                AND pt.order_id = o.id
+                AND pt.type = 'charge'
+                AND pt.status = 'succeeded'
             INNER JOIN stores s
                 ON s.id = o.store_id
             INNER JOIN customers c
@@ -110,6 +122,8 @@ class PaymentCapturedNotificationPublisher
 
         $stmt->execute([
             'order_id' => $orderId,
+            'payment_transaction_id' =>
+                $paymentTransactionId,
         ]);
 
         $order = $stmt->fetch();
@@ -184,9 +198,24 @@ class PaymentCapturedNotificationPublisher
             ?? 0
         );
 
+        $capturedAmount = round(
+            (float) (
+                $order['captured_amount']
+                ?? 0
+            ),
+            2
+        );
+
+        if ($capturedAmount <= 0) {
+            throw new RuntimeException(
+                'payment.captured requires a positive successful charge amount.'
+            );
+        }
+
         $currency = trim(
             (string) (
-                $order['currency']
+                $order['captured_currency']
+                ?? $order['currency']
                 ?? 'USD'
             )
         );
@@ -250,13 +279,45 @@ class PaymentCapturedNotificationPublisher
              */
             'payment_amount' =>
                 '$' . number_format(
-                    $amountPaid,
+                    $capturedAmount,
                     2
+                ),
+
+            'captured_amount' =>
+                number_format(
+                    $capturedAmount,
+                    2,
+                    '.',
+                    ''
                 ),
 
             'amount_paid' =>
                 number_format(
                     $amountPaid,
+                    2,
+                    '.',
+                    ''
+                ),
+
+            'store_credit_applied_amount' =>
+                number_format(
+                    (float) (
+                        $order[
+                            'store_credit_applied_amount'
+                        ] ?? 0
+                    ),
+                    2,
+                    '.',
+                    ''
+                ),
+
+            'external_payment_amount' =>
+                number_format(
+                    (float) (
+                        $order[
+                            'external_payment_amount'
+                        ] ?? $capturedAmount
+                    ),
                     2,
                     '.',
                     ''
