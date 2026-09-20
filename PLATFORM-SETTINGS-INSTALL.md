@@ -208,7 +208,8 @@ http://alasne.net.local/admin/settings
 
 Expected:
 - Platform Settings page loads
-- Runtime Environment shows LOCAL
+- Runtime Environment shows the configured non-production APP_ENV
+  value (for example LOCAL or DEVELOPMENT)
 - APP_URL shows local configured URL
 - General, Regional Defaults, and Administration groups render
 - no secret values are displayed
@@ -300,3 +301,31 @@ and stage acceptance, production deployment will:
 BRANCH SAFETY
 -------------
 Do not merge to master until explicitly requested.
+
+
+ACCEPTANCE RESULTS - 2026-09-20
+-------------------------------
+Local code/build gate: PASSED
+
+Observed:
+- switched successfully to feature/platform-settings-foundation
+- all seven PHP lint checks passed
+- Composer optimized autoload generated successfully
+- git diff --check returned no output
+- migration 000056_create_platform_settings.php completed
+- staging source synchronization completed with 0 failed files
+- staging Composer/platform requirements passed
+- source-tree parity passed
+- Stage build verification PASSED
+- staging .env, vendor, and storage were preserved
+
+Acceptance B - MISSION CONTROL PAGE: PASSED
+
+Observed:
+- /admin/settings loads successfully
+- Runtime Environment displays DEVELOPMENT from local APP_ENV
+- APP_URL displays http://alasne.net.local
+- Administration, General, and Regional Defaults render
+- Settings link is active in the admin sidebar for super_admin
+- no secret credential values are exposed
+- Recent Setting Changes is empty before the first edit
