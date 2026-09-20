@@ -1004,6 +1004,52 @@ class ReturnRepository
         ]);
     }
 
+    public function markRefundFailedAfterSettlement(
+        int $returnId,
+        int $transactionId,
+        string $notes
+    ): bool {
+        $stmt = $this->db->prepare("
+            UPDATE returns
+            SET
+                refund_status = 'failed',
+                refund_transaction_id =
+                    :refund_transaction_id,
+                refunded_amount = 0.00,
+                resolution_status =
+                    'partial_failed',
+                internal_notes = CASE
+                    WHEN :notes_check IS NULL
+                    THEN internal_notes
+                    WHEN internal_notes IS NULL
+                    OR internal_notes = ''
+                    THEN :notes_first
+                    ELSE CONCAT(
+                        internal_notes,
+                        '\n',
+                        :notes_append
+                    )
+                END,
+                updated_at = NOW()
+            WHERE id = :id
+            AND refund_status = 'succeeded'
+        ");
+
+        $stmt->execute([
+            'id' => $returnId,
+            'refund_transaction_id' =>
+                $transactionId,
+            'notes_check' =>
+                $this->nullable($notes),
+            'notes_first' =>
+                $this->nullable($notes),
+            'notes_append' =>
+                $this->nullable($notes),
+        ]);
+
+        return $stmt->rowCount() === 1;
+    }
+
     public function cancel(
         int $returnId,
         ?string $notes = null
