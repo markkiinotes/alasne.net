@@ -28,7 +28,16 @@ class StripePaymentIntentService
             trim((string) ($order['currency'] ?? 'usd'))
         );
         $amount = $this->toMinorUnits(
-            (float) ($order['grand_total'] ?? 0)
+            (float) (
+                array_key_exists(
+                    'external_payment_amount',
+                    $order
+                )
+                    ? $order[
+                        'external_payment_amount'
+                    ]
+                    : ($order['grand_total'] ?? 0)
+            )
         );
 
         if ($orderId <= 0 || $orderNumber === '') {
@@ -53,6 +62,28 @@ class StripePaymentIntentService
                 'alasne_order_id' => (string) $orderId,
                 'alasne_order_number' => $orderNumber,
                 'alasne_store_id' => (string) $storeId,
+                'alasne_store_credit_amount' =>
+                    number_format(
+                        (float) (
+                            $order[
+                                'store_credit_reserved_amount'
+                            ]
+                            ?? $order[
+                                'store_credit_applied_amount'
+                            ]
+                            ?? 0
+                        ),
+                        2,
+                        '.',
+                        ''
+                    ),
+                'alasne_external_payment_amount' =>
+                    number_format(
+                        $amount / 100,
+                        2,
+                        '.',
+                        ''
+                    ),
             ],
         ];
 
