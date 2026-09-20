@@ -547,6 +547,24 @@ class MissionControlNotificationEventBridgeService
                 'payment_amount' => '$84.97',
                 'store_name' => 'Demo Store',
             ],
+            'refund.succeeded' => [
+                'event_id' => 'manual-refund-succeeded-10045',
+                'customer_email' => 'customer@example.com',
+                'customer_name' => 'Jordan Customer',
+                'order_number' => 'A10045',
+                'refund_amount' => '$49.99',
+                'store_name' => 'Demo Store',
+            ],
+            'refund.failed' => [
+                'event_id' => 'manual-refund-failed-10045',
+                'customer_email' => 'customer@example.com',
+                'customer_name' => 'Jordan Customer',
+                'order_number' => 'A10045',
+                'refund_amount' => '$49.99',
+                'refund_failure_reason' =>
+                    'The payment provider could not complete the refund.',
+                'store_name' => 'Demo Store',
+            ],
             'order.shipped' => [
                 'event_id' => 'manual-order-shipped-10045',
                 'customer_email' => 'customer@example.com',
