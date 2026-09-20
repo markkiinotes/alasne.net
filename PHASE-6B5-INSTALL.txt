@@ -283,3 +283,61 @@ Return 18 / RET-20260920-142606-1411 against Order 63:
 
 The successful mixed-tender refund path remains to be proven with a
 fresh Stripe sandbox order using a refund-friendly test payment method.
+
+
+Acceptance D - MIXED-TENDER RETURN SUCCESS PATH: PASSED
+
+Order 66 / WEB-20260920-181602-2982:
+- grand_total = 23.85
+- store_credit_applied_amount = 5.00
+- external_payment_amount = 18.85
+- Stripe charge transaction 49 succeeded for 18.85
+
+Return 19 / RET-20260920-181803-8768:
+- approved merchandise refund = 15.00
+- redeemed credit restored = 3.14
+- external Stripe refund allocation = 11.86
+- Stripe refund transaction 50 succeeded for 11.86
+- return resolution_status = completed
+- return refund_status = succeeded
+- return refunded_amount = 11.86
+- order amount_refunded = 11.86
+- charge refunded_amount = 11.86
+- store_credit_restored_amount = 3.14
+- one redemption_restore transaction increased credit balance to 20.69
+- one return_restock inventory movement restored one unit
+- refund.created and refund.updated webhooks processed successfully
+
+Successful refund replay/idempotency: PASSED
+
+Replayed:
+- evt_3UHt1iIRLe4euTCw24RfVUUD
+- type = refund.updated
+- Stripe Refund status = succeeded
+
+After replay:
+- order amount_refunded remained 11.86
+- return refunded_amount remained 11.86
+- store_credit_restored_amount remained 3.14
+- external_refund_amount remained 11.86
+- charge refunded_amount remained 11.86
+- refund transaction remained succeeded for 11.86
+- redemption_restore transaction count remained 1
+- return_restock movement count remained 1
+- store-credit balance remained 20.69
+- reserved_balance remained 0.00
+- webhook event remained processed with no last_error
+- webhook attempts remained 1 because duplicate event IDs are
+  deduplicated before a second processing attempt
+
+PHASE 6B.5 ACCEPTANCE: PASSED
+
+All required acceptance paths are now proven:
+- partial store credit + Stripe success
+- payment webhook replay safety
+- full store-credit checkout with no Stripe PaymentIntent
+- terminal Stripe cancellation releasing reserved credit
+- mixed-tender refund allocation
+- asynchronous Stripe refund failure rollback
+- successful mixed-tender Stripe refund
+- successful refund webhook replay safety
