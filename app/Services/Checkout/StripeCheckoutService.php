@@ -1474,6 +1474,8 @@ class StripeCheckoutService
                 o.store_id,
                 o.currency,
                 o.grand_total,
+                o.store_credit_reserved_amount,
+                o.store_credit_applied_amount,
                 o.external_payment_amount,
                 c.email AS customer_email
             FROM orders o
