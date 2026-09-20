@@ -152,12 +152,12 @@ $badgeClass = static function (string $status): string {
             Mission Control
         </a>
 
-        <a href="/admin/payments" class="button-muted">
-            Payments
+        <a href="/admin/stores" class="button-muted">
+            Stores
         </a>
 
-        <a href="/admin/payment-methods" class="button-muted">
-            Payment Methods
+        <a href="/admin/production-readiness" class="button-muted">
+            Production Readiness
         </a>
     </div>
 </section>
