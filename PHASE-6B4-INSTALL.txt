@@ -1,0 +1,107 @@
+PHASE 6B.4 - REFUND NOTIFICATIONS & RECONCILIATION
+===================================================
+
+PURPOSE
+-------
+Add idempotent customer refund notifications without allowing notification
+failures to affect Stripe financial finalization.
+
+DESIGN
+------
+- Stripe refund financial state commits first.
+- Refund notifications publish only after commit.
+- refund.succeeded and refund.failed use separate Event Bridge keys.
+- Each key is anchored to the local refund payment transaction ID.
+- Refund notification rules are seeded disabled and dry-run-only, matching
+  Alasne's existing notification automation safety convention.
+- The real refund publisher refuses to consume an Event Bridge idempotency
+  key while a rule is disabled or still in dry-run mode.
+- Reconciliation publishes finalized Stripe refund transactions that have
+  no Event Bridge run yet.
+- Existing failed Event Bridge runs are reported for operator review rather
+  than auto-retried, because an uncertain dispatch failure could otherwise
+  duplicate a customer email.
+
+NEW FILES
+---------
+database/migrations/000055_create_refund_notifications.php
+app/Services/Notifications/RefundNotificationPublisher.php
+app/Services/Notifications/RefundNotificationReconciliationService.php
+scripts/reconcile-refund-notifications.php
+
+UPDATED FILES
+-------------
+app/Services/Payments/Stripe/StripeRefundFinalizer.php
+app/Services/Admin/MissionControlNotificationEventBridgeService.php
+
+MIGRATION
+---------
+Run:
+
+php alasne migrate
+
+The migration adds:
+- template: refund_completed
+- template: refund_failed
+- rule: refund_succeeded_customer_notice
+- rule: refund_failed_customer_notice
+
+No financial/order/refund tables are changed.
+
+ACTIVATION
+----------
+Before running real refund reconciliation, enable BOTH refund notification
+rules and turn dry-run off in Mission Control Notification Automations.
+
+This ordering matters. The publisher intentionally refuses live publication
+until the rule is enabled and no longer dry-run.
+
+ACCEPTANCE GATE
+---------------
+Use the two real Stripe sandbox refunds already proven in Phase 6B.3:
+
+- refund transaction 42 / order 60 = succeeded
+- refund transaction 44 / order 61 = failed
+
+After enabling both refund notification rules for live dispatch:
+
+php scripts/reconcile-refund-notifications.php
+
+Expected first run:
+- both historical finalized refunds are scanned
+- refund.succeeded is published for transaction 42
+- refund.failed is published for transaction 44
+- one dispatch is queued for each event
+- no financial state changes
+
+Run the same command a second time.
+
+Expected second run:
+- no new dispatches are queued
+- the two refund events are reported as already recorded
+
+Verify Mission Control Event Bridge and Email Outbox show exactly one
+refund-completed dispatch for transaction 42 and exactly one refund-failed
+dispatch for transaction 44.
+
+WEBHOOK BEHAVIOR
+----------------
+Future Stripe refund webhooks automatically attempt publication after the
+financial database transaction commits.
+
+If the rule is disabled/dry-run or the notification layer is unavailable:
+- the Stripe refund financial result remains committed
+- the webhook financial finalizer remains successful
+- the notification error is logged
+- the reconciliation runner can publish the missing event later after the
+  notification rule/configuration is corrected
+
+IDEMPOTENCY
+-----------
+refund.succeeded:
+refund.succeeded:payment_transaction_id:{refund_transaction_id}
+
+refund.failed:
+refund.failed:payment_transaction_id:{refund_transaction_id}
+
+The Event Bridge stores the run key with its normal "run:" prefix.
