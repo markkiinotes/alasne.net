@@ -449,3 +449,26 @@ Observed:
 This is an API billing/prepaid-credit condition, not an Alasne
 configuration or authentication failure. A successful live acceptance
 run remains pending until API credits are available.
+
+
+Acceptance D - FIRST LIVE MANUAL RUN: PASSED
+
+Observed:
+- Run #3 completed successfully
+- agent = Alasne Operations Assistant
+- provider = openai
+- model = gpt-5.6-terra
+- response text matched the requested sentence exactly:
+  Alasne AI manual execution is working.
+- input tokens = 54
+- output tokens = 13
+- total tokens = 67
+- latency = 1943 ms
+- Recent AI Runs shows the run as Succeeded
+- operator = Commander Harrison
+- no autonomous action occurred
+
+Additional proof from run history:
+- the earlier authentication failure is now shown as the sanitized
+  openai_authentication_failed message
+- the billing failure contains no API-key fragment
