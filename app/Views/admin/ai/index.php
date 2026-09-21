@@ -308,6 +308,13 @@ $executionAvailable =
 
         <div class="ai-actions">
             <a
+                href="/admin/ai/agents/create"
+                class="ai-button"
+            >
+                Create Agent
+            </a>
+
+            <a
                 href="/admin/settings"
                 class="ai-button secondary"
             >
@@ -511,6 +518,7 @@ $executionAvailable =
                         <th>Capabilities</th>
                         <th>Versions</th>
                         <th>Updated</th>
+                        <th>Manage</th>
                     </tr>
                 </thead>
 
@@ -616,13 +624,31 @@ $executionAvailable =
                                     ?? ''
                                 ) ?>
                             </td>
+
+                            <td>
+                                <div class="ai-actions">
+                                    <a
+                                        href="/admin/ai/agents/<?= (int) $agent['id'] ?>/edit"
+                                        class="ai-button secondary"
+                                    >
+                                        Edit
+                                    </a>
+
+                                    <a
+                                        href="/admin/ai/agents/<?= (int) $agent['id'] ?>/versions"
+                                        class="ai-button secondary"
+                                    >
+                                        Versions
+                                    </a>
+                                </div>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
 
                     <?php if ($agents === []): ?>
                         <tr>
                             <td
-                                colspan="7"
+                                colspan="8"
                                 class="ai-muted"
                             >
                                 No AI agents are defined.
