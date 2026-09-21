@@ -389,3 +389,19 @@ Observed:
 
 This proves the provider credential can be loaded from the local XAMPP
 environment without storing or exposing the secret in Platform Settings.
+
+
+Acceptance C - ENABLE MANUAL TEST CONFIGURATION: PASSED
+
+Observed on /admin/ai:
+- AI Engine = Enabled
+- Provider = openai
+- Default Model = gpt-5.6-terra
+- Credential Variable = OPENAI_API_KEY
+- Credential Presence = Configured
+- Manual-Only Guardrail = Required
+- Configuration Readiness = Ready
+- Manual Execution = Available
+
+The API key value remains hidden and is loaded only from the local
+environment variable.
