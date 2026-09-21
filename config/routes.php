@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Controllers\Admin\AiEngineController;
 use App\Controllers\Admin\CategoryController;
 use App\Controllers\Admin\CustomerController;
 use App\Controllers\Admin\DashboardController;
@@ -101,6 +102,14 @@ $router
     ->middleware('auth')
     ->middleware('permission:orders.manage');
 
+
+$router
+    ->get(
+        '/admin/ai',
+        [AiEngineController::class, 'index']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
 
 $router
     ->get(
