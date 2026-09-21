@@ -122,6 +122,14 @@ $router
 
 $router
     ->get(
+        '/admin/ai/agents/{agent_id}/context',
+        [AiEngineController::class, 'contextPreview']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
+    ->get(
         '/admin/ai/agents/create',
         [AiAgentController::class, 'create']
     )
