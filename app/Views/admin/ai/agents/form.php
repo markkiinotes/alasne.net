@@ -322,6 +322,21 @@ $action = $isEdit
                 >
                     Version History
                 </a>
+
+                <?php if (
+                    in_array(
+                        'operational_snapshot',
+                        $currentCapabilities,
+                        true
+                    )
+                ): ?>
+                    <a
+                        href="/admin/ai/agents/<?= (int) $current['id'] ?>/context"
+                        class="agent-btn secondary"
+                    >
+                        Preview Context
+                    </a>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </header>
