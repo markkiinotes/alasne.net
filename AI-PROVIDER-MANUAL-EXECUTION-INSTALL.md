@@ -405,3 +405,27 @@ Observed on /admin/ai:
 
 The API key value remains hidden and is loaded only from the local
 environment variable.
+
+
+SECURITY HARDENING - PROVIDER ERROR REDACTION
+---------------------------------------------
+During the first live authentication attempt, OpenAI returned an
+authentication error that included a masked representation of the
+submitted credential. The test credential was the local placeholder,
+but Alasne must never depend on a provider to redact secrets safely.
+
+The provider/error path was hardened before continuing acceptance:
+- 401/403 and invalid_api_key/authentication failures now return a
+  generic Alasne error message
+- the configured API key value is removed from all provider error text
+  before propagation
+- strings matching OpenAI-style sk-* credential patterns are redacted
+- "Incorrect API key provided: ..." fragments are redacted
+- AiExecutionService performs a second sanitization pass before writing
+  error_message to ai_runs or returning the error to Mission Control
+
+Expected authentication error after this patch:
+
+openai_authentication_failed: OpenAI rejected the configured API credential.
+
+No API-key fragment should be rendered or persisted.
