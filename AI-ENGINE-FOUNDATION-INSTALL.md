@@ -271,3 +271,42 @@ Observed:
 - no Run/Execute Agent control is present
 - execution state is Foundation Only
 - no outbound AI provider call is available in the foundation module
+
+
+Acceptance A - SCHEMA + PERMISSION + SETTINGS: PASSED
+
+Observed:
+- ai.enabled = boolean / 0
+- ai.provider = select / openai
+- ai.model = string / blank
+- ai.api_key_env = environment_reference / OPENAI_API_KEY
+- ai.manual_execution_only = boolean / 1
+- ai.manage exists and is assigned to super_admin
+- one Alasne Operations Assistant agent exists
+- agent status = draft
+- model_override = NULL
+- max_output_tokens = 2000
+- capabilities = manual_prompting + read_only_analysis
+
+Acceptance C - SETTINGS INTEGRATION: PASSED
+
+Observed in /admin/settings:
+- AI Engine settings group renders successfully
+- AI Engine Enabled is disabled
+- Provider = OpenAI
+- Default AI Model is blank
+- API Key Environment Variable = OPENAI_API_KEY
+- Manual Execution Only is enabled
+- no provider credential value is displayed
+- all AI values are managed through the existing typed Platform Settings layer
+
+AI ENGINE FOUNDATION ACCEPTANCE: PASSED
+
+All foundation acceptance paths are now proven:
+- schema + permission + default AI settings
+- Mission Control AI dashboard
+- Platform Settings integration
+- credential-name-only environment boundary
+- draft agent definition
+- no execution surface
+- local/staging code and build gate
