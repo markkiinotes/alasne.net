@@ -8,6 +8,7 @@ use App\Core\Controller;
 use App\Core\Request;
 use App\Services\AI\AiEngineService;
 use App\Services\AI\AiExecutionService;
+use App\Services\AI\AiOperationalContextService;
 use App\Services\Auth\CsrfService;
 
 class AiEngineController extends Controller
@@ -15,6 +16,7 @@ class AiEngineController extends Controller
     public function __construct(
         private AiEngineService $engine,
         private AiExecutionService $execution,
+        private AiOperationalContextService $operationalContext,
         private CsrfService $csrf
     ) {
         parent::__construct();
@@ -139,4 +141,41 @@ class AiEngineController extends Controller
             return null;
         }
     }
+
+    public function contextPreview(
+        Request $request
+    ) {
+        $agentId = (int) $request->route(
+            'agent_id'
+        );
+
+        try {
+            $preview =
+                $this->operationalContext
+                    ->previewForAgent(
+                        $agentId
+                    );
+
+            return $this->view(
+                'admin.ai.context-preview',
+                [
+                    'title' =>
+                        'AI Operational Context',
+                    'preview' => $preview,
+                ],
+                'admin'
+            );
+        } catch (\Throwable $exception) {
+            $_SESSION['ai_error'] =
+                $exception->getMessage()
+                ?: 'Unable to build AI operational context.';
+
+            $this->response->redirect(
+                '/admin/ai'
+            );
+
+            return null;
+        }
+    }
+
 }
