@@ -287,16 +287,59 @@ class AiExecutionService
                 )
             );
 
+            $safeMessage =
+                $this->sanitizeProviderError(
+                    $exception->getMessage()
+                        ?: 'AI provider request failed.',
+                    $apiKey
+                );
+
             $this->runs->markFailed(
                 $runId,
                 'provider_error',
-                $exception->getMessage()
-                    ?: 'AI provider request failed.',
+                $safeMessage,
                 $latencyMs
             );
 
-            throw $exception;
+            throw new RuntimeException(
+                $safeMessage
+            );
         }
+    }
+
+    private function sanitizeProviderError(
+        string $message,
+        string $apiKey
+    ): string {
+        $clean = trim($message);
+
+        if ($apiKey !== '') {
+            $clean = str_replace(
+                $apiKey,
+                '[REDACTED]',
+                $clean
+            );
+        }
+
+        $clean = preg_replace(
+            '/\bsk-[A-Za-z0-9_-]{8,}\b/',
+            '[REDACTED]',
+            $clean
+        ) ?? $clean;
+
+        $clean = preg_replace(
+            '/Incorrect API key provided:\s*[^.\r\n]+/i',
+            'Incorrect API key provided: [REDACTED]',
+            $clean
+        ) ?? $clean;
+
+        return mb_substr(
+            $clean !== ''
+                ? $clean
+                : 'AI provider request failed.',
+            0,
+            1000
+        );
     }
 
     /**
