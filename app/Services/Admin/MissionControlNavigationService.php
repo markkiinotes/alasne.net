@@ -130,6 +130,13 @@ class MissionControlNavigationService
                         'products.manage'
                     ),
                     $this->item(
+                        'AI Engine',
+                        '/admin/ai',
+                        'Provider readiness and internal agent definitions',
+                        null,
+                        'ai.manage'
+                    ),
+                    $this->item(
                         'Product Sourcing Scanner',
                         '/admin/product-sourcing',
                         'Profitability scoring and approvals',
