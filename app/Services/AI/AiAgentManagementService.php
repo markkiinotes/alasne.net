@@ -132,6 +132,32 @@ class AiAgentManagementService
             $input
         );
 
+        if (
+            strtolower(
+                (string) $agent['status']
+            ) === 'active'
+        ) {
+            $candidate = $agent;
+
+            foreach (
+                [
+                    'name',
+                    'description',
+                    'system_instructions',
+                    'model_override',
+                    'max_output_tokens',
+                    'capabilities_json',
+                ] as $field
+            ) {
+                $candidate[$field] =
+                    $data[$field];
+            }
+
+            $this->assertActivationReady(
+                $candidate
+            );
+        }
+
         $note = $this->changeNote(
             $input
         );
