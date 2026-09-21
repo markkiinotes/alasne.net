@@ -209,7 +209,9 @@ class AiAgentController extends Controller
                 'Security token expired. Please try again.';
 
             $this->response->redirect(
-                '/admin/ai'
+                '/admin/ai/agents/'
+                . $agentId
+                . '/edit'
             );
 
             return null;
@@ -267,6 +269,10 @@ class AiAgentController extends Controller
         ?int $agentId,
         string $mode
     ) {
+        $success =
+            $_SESSION['ai_success']
+            ?? null;
+
         $error =
             $_SESSION['ai_agent_error']
             ?? null;
@@ -276,6 +282,7 @@ class AiAgentController extends Controller
             ?? [];
 
         unset(
+            $_SESSION['ai_success'],
             $_SESSION['ai_agent_error'],
             $_SESSION['ai_agent_old']
         );
@@ -306,6 +313,10 @@ class AiAgentController extends Controller
                     ],
                 'csrf_token' =>
                     $this->csrf->token(),
+                'success' =>
+                    is_string($success)
+                        ? $success
+                        : null,
                 'error' =>
                     is_string($error)
                         ? $error
