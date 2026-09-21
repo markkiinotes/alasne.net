@@ -18,7 +18,10 @@ class AiRunRepository
         string $provider,
         string $model,
         string $promptSha256,
-        int $promptLength
+        int $promptLength,
+        ?string $contextType = null,
+        ?string $contextSha256 = null,
+        int $contextLength = 0
     ): int {
         $stmt = $this->db->prepare("
             INSERT INTO ai_runs (
@@ -29,6 +32,9 @@ class AiRunRepository
                 status,
                 prompt_sha256,
                 prompt_length,
+                context_type,
+                context_sha256,
+                context_length,
                 created_at
             ) VALUES (
                 :agent_id,
@@ -38,6 +44,9 @@ class AiRunRepository
                 'pending',
                 :prompt_sha256,
                 :prompt_length,
+                :context_type,
+                :context_sha256,
+                :context_length,
                 NOW()
             )
         ");
@@ -49,6 +58,9 @@ class AiRunRepository
             'model' => $model,
             'prompt_sha256' => $promptSha256,
             'prompt_length' => $promptLength,
+            'context_type' => $contextType,
+            'context_sha256' => $contextSha256,
+            'context_length' => $contextLength,
         ]);
 
         return (int) $this->db->lastInsertId();
