@@ -640,6 +640,21 @@ $executionAvailable =
                                     >
                                         Versions
                                     </a>
+
+                                    <?php if (
+                                        in_array(
+                                            'operational_snapshot',
+                                            $agent['capabilities'],
+                                            true
+                                        )
+                                    ): ?>
+                                        <a
+                                            href="/admin/ai/agents/<?= (int) $agent['id'] ?>/context"
+                                            class="ai-button secondary"
+                                        >
+                                            Context
+                                        </a>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
