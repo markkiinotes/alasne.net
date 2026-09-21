@@ -402,3 +402,24 @@ Observed on /admin/ai/agents/1/versions:
 - change note = Initial agent snapshot
 - system instructions are available in the read-only expandable snapshot
 - Edit Agent and AI Engine navigation are available
+
+
+Acceptance C - CREATE A DRAFT TEST AGENT: PASSED
+
+Observed:
+- agent id = 2
+- name = Alasne Acceptance Analyst
+- stable slug = alasne-acceptance-analyst
+- status = draft
+- model_override = NULL
+- max_output_tokens = 600
+- capabilities = manual_prompting + read_only_analysis
+- created_by_user_id = 1
+- updated_by_user_id = 1
+- version count = 1
+- version #1 status = draft
+- version #1 change note = Created agent
+- version #1 changed_by_user_id = 1
+
+The create workflow correctly redirects to the edit page and reports:
+AI agent created as Draft with version #1.
