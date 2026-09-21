@@ -373,3 +373,19 @@ Observed:
 - source-tree parity passed
 - Stage build verification PASSED
 - staging .env, vendor, and storage were preserved
+
+
+Acceptance B - LOCAL CREDENTIAL BOUNDARY: PASSED
+
+Observed:
+- .env is ignored by Git via .gitignore
+- PHP runtime reports OPENAI_API_KEY configured
+- /admin/ai shows Credential Presence = Configured
+- API key value is not displayed
+- AI Engine remains Disabled
+- Default Model remains Not selected
+- Configuration Readiness remains Not Ready
+- Manual Execution remains Locked
+
+This proves the provider credential can be loaded from the local XAMPP
+environment without storing or exposing the secret in Platform Settings.
