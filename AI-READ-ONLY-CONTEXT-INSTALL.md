@@ -360,3 +360,44 @@ This phase does NOT add:
 BRANCH SAFETY
 -------------
 Do not merge to master until explicitly requested.
+
+
+ACCEPTANCE RESULTS - 2026-09-21
+-------------------------------
+
+Acceptance C - PREVIEW WITHOUT PROVIDER CALL: PASSED
+
+Observed on /admin/ai/agents/1/context:
+- agent = Alasne Operations Assistant
+- context type = mission_control_operational_snapshot_v1
+- context length = 5423 characters
+- SHA-256 = f9424da5fa2b1002e86abf6a3079731c22e4cde32d76c5998c38ceeca1be7f4b
+- included sections are server-selected and field-whitelisted
+- read-only snapshot JSON is visible
+- preview page explicitly states that opening it does not call OpenAI
+
+Safety verification:
+- ai.enabled = 0
+- AI RUN COUNT = 5
+
+Therefore preview generation created no provider request and no ai_runs row.
+
+Acceptance D - PII / FIELD BOUNDARY: PASSED
+
+Programmatic blocked-key scan of the exact serialized snapshot returned:
+- customer_name: absent
+- first_name: absent
+- last_name: absent
+- email: absent
+- phone: absent
+- address_line_1: absent
+- address_line_2: absent
+- postal_code: absent
+- customer_email: absent
+- customer_phone: absent
+
+Result:
+BLOCKED KEYS FOUND: NONE
+
+This proves the operational snapshot excludes the prohibited customer
+identity/contact fields in the configured field boundary.
