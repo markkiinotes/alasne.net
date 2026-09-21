@@ -401,3 +401,18 @@ BLOCKED KEYS FOUND: NONE
 
 This proves the operational snapshot excludes the prohibited customer
 identity/contact fields in the configured field boundary.
+
+
+Acceptance E - ARCHIVED AGENT BLOCK: PASSED
+
+Observed:
+- Alasne Acceptance Analyst remains archived
+- requesting /admin/ai/agents/2/context was rejected
+- Mission Control displayed:
+  Archived AI agents cannot receive operational context.
+- no snapshot was exposed for the archived agent
+- ai.enabled remained 0
+- AI RUN COUNT remained 5
+
+This proves archived agents cannot access the bounded operational
+snapshot and the rejected request creates no provider run.
