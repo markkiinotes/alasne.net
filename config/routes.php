@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Controllers\Admin\AiAgentController;
 use App\Controllers\Admin\AiEngineController;
 use App\Controllers\Admin\CategoryController;
 use App\Controllers\Admin\CustomerController;
@@ -115,6 +116,54 @@ $router
     ->post(
         '/admin/ai/agents/{agent_id}/run',
         [AiEngineController::class, 'run']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
+    ->get(
+        '/admin/ai/agents/create',
+        [AiAgentController::class, 'create']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
+    ->post(
+        '/admin/ai/agents',
+        [AiAgentController::class, 'store']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
+    ->get(
+        '/admin/ai/agents/{agent_id}/edit',
+        [AiAgentController::class, 'edit']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
+    ->post(
+        '/admin/ai/agents/{agent_id}',
+        [AiAgentController::class, 'update']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
+    ->get(
+        '/admin/ai/agents/{agent_id}/versions',
+        [AiAgentController::class, 'versions']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
+    ->post(
+        '/admin/ai/agents/{agent_id}/status',
+        [AiAgentController::class, 'status']
     )
     ->middleware('auth')
     ->middleware('permission:ai.manage');
