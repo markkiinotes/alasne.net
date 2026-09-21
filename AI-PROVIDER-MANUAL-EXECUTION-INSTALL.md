@@ -337,3 +337,25 @@ Those capabilities require separate guardrail and authorization phases.
 BRANCH SAFETY
 -------------
 Do not merge to master until explicitly requested.
+
+
+ACCEPTANCE RESULTS - 2026-09-20
+-------------------------------
+Branch + migration checkpoint: PASSED
+
+Observed:
+- local branch = feature/ai-provider-manual-execution
+- migration 000058_create_ai_runs.php completed successfully
+
+Acceptance A - LOCKED WITHOUT CONFIGURATION: PASSED
+
+Observed on /admin/ai:
+- Manual execution is locked
+- Manual Agent Test workspace is visible
+- prompt textarea is disabled
+- Run Manual Test button is disabled
+- Recent AI Runs contains no rows
+- operator notice correctly explains readiness requirements
+
+This proves deploying the live-provider/manual-execution code does not
+activate AI by itself.
