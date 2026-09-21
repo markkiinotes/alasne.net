@@ -472,3 +472,32 @@ Additional proof from run history:
 - the earlier authentication failure is now shown as the sanitized
   openai_authentication_failed message
 - the billing failure contains no API-key fragment
+
+
+Acceptance E - DATABASE CONTENT BOUNDARY: PASSED
+
+Verified successful Run #3:
+- agent_id = 1
+- requested_by_user_id = 1
+- provider = openai
+- model = gpt-5.6-terra
+- status = succeeded
+- prompt_sha256 is a 64-character hash
+- prompt_length = 72
+- output_length = 38
+- provider_status = completed
+- input_tokens = 54
+- output_tokens = 13
+- total_tokens = 67
+- latency_ms = 1943
+- error_code = NULL
+- error_message = NULL
+
+Schema verification:
+- ai_runs contains no prompt_text column
+- ai_runs contains no response_text column
+- ai_runs contains no API-key column
+- only metadata, hashes, usage, IDs, latency, and errors are persisted
+
+This proves the live prompt and response are not persisted in the AI
+run audit table.
