@@ -423,3 +423,30 @@ Observed:
 
 The create workflow correctly redirects to the edit page and reports:
 AI agent created as Draft with version #1.
+
+
+Acceptance D - EDIT + NO-OP VERSION CONTROL: PASSED
+
+Observed current test agent:
+- id = 2
+- slug = alasne-acceptance-analyst
+- status = draft
+- description updated to immutable-versioning wording
+- max_output_tokens = 700
+- capabilities remain manual_prompting + read_only_analysis
+
+Immutable history:
+- version #1 remains unchanged
+  - status = draft
+  - output limit = 600
+  - change note = Created agent
+- version #2 recorded
+  - status = draft
+  - output limit = 700
+  - change note = Acceptance definition edit
+
+No-op protection:
+- saving the identical agent definition again reported:
+  No agent definition changes were required.
+- version count remained exactly 2
+- no version #3 was created by the no-op save
