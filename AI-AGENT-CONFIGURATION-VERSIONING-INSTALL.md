@@ -450,3 +450,24 @@ No-op protection:
   No agent definition changes were required.
 - version count remained exactly 2
 - no version #3 was created by the no-op save
+
+
+Acceptance E - ACTIVATE + ACTIVE GUARD: PASSED
+
+Observed:
+- Alasne Acceptance Analyst activated successfully
+- current status = active
+- version count = 3
+- version #3 status = active
+- version #3 change note = Acceptance activation
+- max_output_tokens remains 700
+- capabilities remain manual_prompting + read_only_analysis
+
+Active-agent safety guard:
+- manual_prompting was temporarily unchecked in the edit form
+- save attempt was rejected with:
+  Agent requires manual_prompting capability before activation.
+- persisted agent remained Active
+- persisted capabilities still include manual_prompting
+- version count remained 3
+- no version #4 was created by the blocked unsafe edit
