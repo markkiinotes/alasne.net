@@ -350,3 +350,33 @@ This phase does NOT add:
 BRANCH SAFETY
 -------------
 Do not merge to master until explicitly requested.
+
+
+ACCEPTANCE RESULTS - 2026-09-20
+-------------------------------
+Local code/staging gate: PASSED
+
+Observed:
+- local branch switched to feature/ai-agent-configuration-versioning
+- all eight PHP lint checks passed
+- Composer optimized autoload completed with 727 classes
+- git diff --check returned no output
+- migration 000059_version_ai_agent_definitions.php completed successfully
+- staging synchronization completed without failed files
+- staging Composer/platform requirements passed
+- source-tree parity passed
+- Stage build verification PASSED
+- staging .env, vendor, and storage were preserved
+
+Acceptance A - VERSION SCHEMA + BACKFILL: PASSED
+
+Observed:
+- ai_agent_versions.slug exists as varchar(150)
+- ai_agent_versions.status exists as varchar(30)
+- Alasne Operations Assistant remains agent id 1
+- current slug = alasne-operations-assistant
+- current status = draft
+- version_count = 1
+- latest_version = 1
+- immutable version #1 matches the current slug/status
+- version #1 change note = Initial agent snapshot
