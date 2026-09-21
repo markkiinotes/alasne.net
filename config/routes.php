@@ -112,6 +112,14 @@ $router
     ->middleware('permission:ai.manage');
 
 $router
+    ->post(
+        '/admin/ai/agents/{agent_id}/run',
+        [AiEngineController::class, 'run']
+    )
+    ->middleware('auth')
+    ->middleware('permission:ai.manage');
+
+$router
     ->get(
         '/admin/settings',
         [PlatformSettingsController::class, 'index']
