@@ -57,8 +57,10 @@ return new class($this->db) extends Migration
                 a.model_override,
                 a.max_output_tokens,
                 a.capabilities_json,
-                a.updated_by_user_id
-                    ?: a.created_by_user_id,
+                COALESCE(
+                    a.updated_by_user_id,
+                    a.created_by_user_id
+                ),
                 'Initial agent snapshot',
                 a.created_at
             FROM ai_agents a
