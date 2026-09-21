@@ -354,3 +354,49 @@ Observed:
   - changed_by_user_id = 1
   - change_source = mission_control
 - update timestamp recorded successfully
+
+
+Acceptance D - VALIDATION IS ATOMIC: PASSED
+
+Controlled invalid submission:
+- admin.default_page_size was temporarily submitted as 30
+- platform.support_email was temporarily submitted as not-an-email
+
+Post-validation database proof:
+- admin.default_page_size remained 25
+- platform.support_email remained blank
+- audit row count remained 2
+
+This proves invalid validation prevented the entire settings batch from
+being written; no partial setting update or audit row was created.
+
+Acceptance E - NO-OP SAVE: PASSED
+
+Observed after saving valid values without changes:
+- audit row count remained 2
+- no extra setting change was recorded
+
+Acceptance F - DATABASE / ENVIRONMENT BOUNDARY: PASSED
+
+Mission Control UI confirms credentials and secrets are excluded from
+Platform Settings. The page explicitly keeps the following in protected
+environment configuration rather than editable database settings:
+- database passwords
+- Stripe secrets
+- SMTP passwords
+- AI API keys
+- application keys
+- supplier credentials
+
+PLATFORM SETTINGS FOUNDATION ACCEPTANCE: PASSED
+
+All required acceptance paths are proven:
+- local/staging code and build gate
+- migration 000056
+- settings.manage permission + super_admin assignment
+- Mission Control /admin/settings page
+- typed setting reads
+- audited value changes
+- atomic validation
+- no-op save behavior
+- database/environment secret boundary
