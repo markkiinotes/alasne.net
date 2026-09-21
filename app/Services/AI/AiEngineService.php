@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Services\AI;
 
 use App\Repositories\AiAgentRepository;
+use App\Repositories\AiRunRepository;
 use App\Services\Settings\PlatformSettingsService;
 
 class AiEngineService
 {
     public function __construct(
         private AiAgentRepository $agents,
+        private AiRunRepository $runs,
         private PlatformSettingsService $settings
     ) {
     }
@@ -72,6 +74,10 @@ class AiEngineService
             $this->agents->all()
         );
 
+        $executionAvailable =
+            $configurationReady
+            && strtolower($provider) === 'openai';
+
         return [
             'configuration' => [
                 'enabled' => $enabled,
@@ -93,9 +99,12 @@ class AiEngineService
                     $manualOnly,
                 'configuration_ready' =>
                     $configurationReady,
-                'execution_available' => false,
+                'execution_available' =>
+                    $executionAvailable,
             ],
             'agents' => $agents,
+            'recent_runs' =>
+                $this->runs->recent(50),
             'summary' => [
                 'total_agents' => count($agents),
                 'active_agents' => count(
