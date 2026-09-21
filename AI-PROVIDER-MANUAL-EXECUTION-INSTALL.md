@@ -501,3 +501,26 @@ Schema verification:
 
 This proves the live prompt and response are not persisted in the AI
 run audit table.
+
+
+Acceptance G - FAILURE AUDIT: PASSED
+
+Controlled failure configuration:
+- ai.model = alasne-invalid-model-test
+- AI Engine remained enabled
+- Manual Execution Only remained enabled
+
+Observed Run #5:
+- provider = openai
+- model = alasne-invalid-model-test
+- status = failed
+- prompt_sha256 recorded
+- prompt_length = 50
+- output_length = 0
+- latency_ms = 1192
+- error_code = provider_error
+- error_message = model_not_found with no API-key fragment
+- created_at/completed_at recorded
+
+This proves provider failures are audited without persisting prompt/response
+content or exposing provider credentials.
