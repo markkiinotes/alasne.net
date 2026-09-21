@@ -205,7 +205,7 @@ class AiAgentController extends Controller
         );
 
         if (! $this->validCsrf()) {
-            $_SESSION['ai_error'] =
+            $_SESSION['ai_agent_error'] =
                 'Security token expired. Please try again.';
 
             $this->response->redirect(
@@ -248,17 +248,21 @@ class AiAgentController extends Controller
                     : 'AI agent status was already unchanged.';
 
             $this->response->redirect(
-                '/admin/ai'
+                '/admin/ai/agents/'
+                . $agentId
+                . '/edit'
             );
 
             return null;
         } catch (\Throwable $exception) {
-            $_SESSION['ai_error'] =
+            $_SESSION['ai_agent_error'] =
                 $exception->getMessage()
                 ?: 'Unable to change AI agent status.';
 
             $this->response->redirect(
-                '/admin/ai'
+                '/admin/ai/agents/'
+                . $agentId
+                . '/edit'
             );
 
             return null;
