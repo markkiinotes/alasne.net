@@ -524,3 +524,41 @@ Observed Run #5:
 
 This proves provider failures are audited without persisting prompt/response
 content or exposing provider credentials.
+
+
+Acceptance F - MASTER DISABLE GUARD: PASSED
+
+Final configured state:
+- ai.enabled = 0
+- ai.model = gpt-5.6-terra
+- ai.manual_execution_only = 1
+- credential presence remains Configured
+- AI run history remains intact with 5 rows
+
+Observed on /admin/ai:
+- AI Engine = Disabled
+- Provider = openai
+- Default Model = gpt-5.6-terra
+- Credential Presence = Configured
+- Manual-Only Guardrail = Required
+- Configuration Readiness = Not Ready
+- Manual Execution = Locked
+- manual execution warning is visible
+- the operator prompt surface is disabled by the master AI flag
+- previous run history remains available
+
+AI PROVIDER + MANUAL EXECUTION ACCEPTANCE: PASSED
+
+All required acceptance paths are proven:
+- deployment does not activate AI by itself
+- provider credential stays in the environment
+- local credential presence/readiness detection
+- explicit model + enable configuration
+- first successful live OpenAI manual run
+- token usage and latency capture
+- metadata-only run persistence
+- no stored prompt/response/API key columns
+- provider error sanitization
+- controlled provider failure auditing
+- master disable/lock guard
+- no tools, scheduled execution, autonomous loops, or external actions
