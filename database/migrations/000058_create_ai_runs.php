@@ -21,6 +21,7 @@ return new class($this->db) extends Migration
                 output_length INT UNSIGNED NOT NULL DEFAULT 0,
                 response_id VARCHAR(191) NULL,
                 provider_request_id VARCHAR(191) NULL,
+                provider_status VARCHAR(60) NULL,
                 input_tokens INT UNSIGNED NULL,
                 output_tokens INT UNSIGNED NULL,
                 total_tokens INT UNSIGNED NULL,
