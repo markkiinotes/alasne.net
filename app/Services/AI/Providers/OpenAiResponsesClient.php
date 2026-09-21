@@ -207,8 +207,32 @@ class OpenAiResponsesClient implements AiProvider
                 )
             );
 
+            if (
+                in_array(
+                    $httpStatus,
+                    [401, 403],
+                    true
+                )
+                || in_array(
+                    strtolower($code),
+                    [
+                        'invalid_api_key',
+                        'authentication_error',
+                        'permission_denied',
+                    ],
+                    true
+                )
+            ) {
+                throw new RuntimeException(
+                    'openai_authentication_failed: OpenAI rejected the configured API credential.'
+                );
+            }
+
             throw new RuntimeException(
-                $code . ': ' . $message
+                $this->sanitizeProviderError(
+                    $code . ': ' . $message,
+                    $apiKey
+                )
             );
         }
 
@@ -341,6 +365,41 @@ class OpenAiResponsesClient implements AiProvider
         }
 
         return $clean;
+    }
+
+    private function sanitizeProviderError(
+        string $message,
+        string $apiKey
+    ): string {
+        $clean = trim($message);
+
+        if ($apiKey !== '') {
+            $clean = str_replace(
+                $apiKey,
+                '[REDACTED]',
+                $clean
+            );
+        }
+
+        $clean = preg_replace(
+            '/\bsk-[A-Za-z0-9_-]{8,}\b/',
+            '[REDACTED]',
+            $clean
+        ) ?? $clean;
+
+        $clean = preg_replace(
+            '/Incorrect API key provided:\s*[^.\r\n]+/i',
+            'Incorrect API key provided: [REDACTED]',
+            $clean
+        ) ?? $clean;
+
+        return mb_substr(
+            $clean !== ''
+                ? $clean
+                : 'OpenAI request failed.',
+            0,
+            1000
+        );
     }
 
     private function uuidV4(): string
