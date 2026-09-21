@@ -858,6 +858,28 @@ $executionAvailable =
                         </span>
                     <?php endif; ?>
 
+                    <?php if (
+                        ! empty(
+                            $last_result[
+                                'context_type'
+                            ]
+                        )
+                    ): ?>
+                        <span>
+                            Context:
+                            <?= $escape(
+                                $last_result[
+                                    'context_type'
+                                ]
+                            ) ?>
+                            (<?= (int) (
+                                $last_result[
+                                    'context_length'
+                                ] ?? 0
+                            ) ?> chars)
+                        </span>
+                    <?php endif; ?>
+
                     <span>
                         <?= $escape(
                             $last_result[
@@ -890,6 +912,7 @@ $executionAvailable =
                         <th>Status</th>
                         <th>Provider / Model</th>
                         <th>Usage</th>
+                        <th>Context</th>
                         <th>Latency</th>
                         <th>Operator</th>
                         <th>Created</th>
@@ -963,6 +986,35 @@ $executionAvailable =
                             </td>
 
                             <td>
+                                <?php if (
+                                    ! empty(
+                                        $run[
+                                            'context_type'
+                                        ]
+                                    )
+                                ): ?>
+                                    <span class="ai-code">
+                                        <?= $escape(
+                                            $run[
+                                                'context_type'
+                                            ]
+                                        ) ?>
+                                    </span>
+                                    <br>
+                                    <span class="ai-muted">
+                                        <?= (int) (
+                                            $run[
+                                                'context_length'
+                                            ] ?? 0
+                                        ) ?>
+                                        chars
+                                    </span>
+                                <?php else: ?>
+                                    —
+                                <?php endif; ?>
+                            </td>
+
+                            <td>
                                 <?= $run['latency_ms']
                                     !== null
                                     ? $escape(
@@ -1003,7 +1055,7 @@ $executionAvailable =
                     ): ?>
                         <tr>
                             <td
-                                colspan="9"
+                                colspan="10"
                                 class="ai-muted"
                             >
                                 No AI runs have been recorded yet.
