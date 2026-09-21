@@ -380,3 +380,25 @@ Observed:
 - latest_version = 1
 - immutable version #1 matches the current slug/status
 - version #1 change note = Initial agent snapshot
+
+
+Acceptance B - MANAGEMENT UI: PASSED
+
+Observed on /admin/ai:
+- AI Engine remains Disabled
+- Manual Execution remains Locked
+- Alasne Operations Assistant remains Draft
+- version count = 1
+- Edit control is available
+- Versions control is available
+
+Observed on /admin/ai/agents/1/versions:
+- one immutable version is shown
+- Version #1 status = Draft
+- stable slug = alasne-operations-assistant
+- model = Platform default
+- output limit = 2000
+- capabilities = manual_prompting + read_only_analysis
+- change note = Initial agent snapshot
+- system instructions are available in the read-only expandable snapshot
+- Edit Agent and AI Engine navigation are available
