@@ -11,6 +11,7 @@ class AiAgentManagementService
 {
     private const ALLOWED_CAPABILITIES = [
         'manual_prompting',
+        'operational_snapshot',
         'read_only_analysis',
     ];
 
