@@ -429,3 +429,23 @@ Expected authentication error after this patch:
 openai_authentication_failed: OpenAI rejected the configured API credential.
 
 No API-key fragment should be rendered or persisted.
+
+
+LIVE PROVIDER CHECKPOINT - BILLING GATE
+---------------------------------------
+A live manual request reached OpenAI using the real local environment
+credential and was rejected with:
+
+credit_balance_exhausted
+
+Observed:
+- credential presence remained Configured
+- configuration readiness remained Ready
+- manual execution remained Available
+- provider authentication no longer failed
+- Mission Control displayed no API-key fragment
+- provider error redaction hardening worked as intended
+
+This is an API billing/prepaid-credit condition, not an Alasne
+configuration or authentication failure. A successful live acceptance
+run remains pending until API credits are available.
