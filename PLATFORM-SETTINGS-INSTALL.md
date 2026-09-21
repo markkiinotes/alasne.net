@@ -329,3 +329,28 @@ Observed:
 - Settings link is active in the admin sidebar for super_admin
 - no secret credential values are exposed
 - Recent Setting Changes is empty before the first edit
+
+
+Acceptance A - SCHEMA + PERMISSION: PASSED
+
+Observed:
+- six seeded platform settings are present
+- value types are stored correctly
+- settings.manage exists
+- settings.manage is attached to super_admin
+
+Acceptance C - VALID UPDATE + TYPED READ: PASSED
+
+Test:
+- admin.default_page_size changed from 25 to 30 through Mission Control
+
+Observed:
+- typed PlatformSettingsService read returned 30
+- PHP type = integer
+- audit log recorded:
+  - setting_key = admin.default_page_size
+  - old_value_text = 25
+  - new_value_text = 30
+  - changed_by_user_id = 1
+  - change_source = mission_control
+- update timestamp recorded successfully
