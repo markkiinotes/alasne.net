@@ -471,3 +471,77 @@ Active-agent safety guard:
 - persisted capabilities still include manual_prompting
 - version count remained 3
 - no version #4 was created by the blocked unsafe edit
+
+
+Acceptance F - ARCHIVE WITHOUT DELETE: PASSED
+
+Observed:
+- Alasne Acceptance Analyst remains agent id 2
+- current status = archived
+- version count = 4
+- stable slug remains alasne-acceptance-analyst
+- max_output_tokens remains 700
+- capabilities remain manual_prompting + read_only_analysis
+- version #4 status = archived
+- version #4 was created by the authenticated operator
+- agent row was retained; no destructive delete occurred
+- edit/version history remain available
+
+Note:
+- the operator-entered version #4 change note was recorded as:
+  Change Note: Acceptance archive
+- this remains valid immutable operator-supplied history and was not altered
+
+Acceptance G - IMMUTABLE HISTORY: PASSED
+
+Verified complete lifecycle:
+- version #1
+  - status = draft
+  - output limit = 600
+  - change note = Created agent
+- version #2
+  - status = draft
+  - output limit = 700
+  - change note = Acceptance definition edit
+- version #3
+  - status = active
+  - output limit = 700
+  - change note = Acceptance activation
+- version #4
+  - status = archived
+  - output limit = 700
+  - operator-supplied archive change note recorded
+
+Across all four versions:
+- name remains Alasne Acceptance Analyst
+- slug remains alasne-acceptance-analyst
+- capabilities remain manual_prompting + read_only_analysis
+- changed_by_user_id = 1
+- timestamps are recorded
+
+Acceptance H - GLOBAL AI SAFETY STATE: PASSED
+
+Observed:
+- ai.enabled = 0
+- ai.manual_execution_only = 1
+- AI RUN COUNT = 5
+
+The complete configuration/versioning acceptance lifecycle produced no
+new provider run and did not enable the AI Engine.
+
+AI AGENT CONFIGURATION + VERSIONING ACCEPTANCE: PASSED
+
+All required acceptance paths are proven:
+- version schema extension + initial backfill
+- management UI + immutable version history
+- draft agent creation
+- stable slug generation
+- definition edit creates a new immutable version
+- no-op save creates no version
+- activation creates a version
+- active-agent unsafe edit is blocked
+- archive is non-destructive and versioned
+- immutable lifecycle history is preserved
+- global AI Engine remains disabled
+- manual-only guardrail remains enabled
+- no new AI provider execution occurred
