@@ -139,3 +139,43 @@ The isolated scoped service did not create provider runs.
 
 The first scoped foundation is accepted. UI and provider execution
 integration remain pending. No master merge was performed.
+
+
+ACCEPTANCE RESULTS — FOUNDATION
+-------------------------------
+Acceptance A — VALID SCOPED PREVIEW: PASSED
+
+Observed:
+- context type = mission_control_store_snapshot_v1
+- store_id = 1
+- reporting period = 2026-09-01 through 2026-09-22
+- context length = 2557 characters
+- SHA-256 length = 64
+- sections:
+  schema
+  scope
+  summary
+  returns
+  recent_orders
+  low_stock_products
+
+Acceptance B — FAIL-CLOSED GUARDS: PASSED
+
+Blocked as required:
+- unauthenticated operator
+- all-stores / store_id 0
+- missing store
+- invalid date
+- reversed reporting period
+- archived agent
+
+No invalid request was unexpectedly allowed.
+
+Acceptance C — NO AI EXECUTION: PASSED
+
+Verified:
+- ai.enabled = 0
+- AI RUN COUNT = 6
+
+The scoped foundation produced no provider request and did not modify
+the accepted AI execution state.
