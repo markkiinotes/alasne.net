@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
+use App\Repositories\StoreRepository;
 use App\Core\Controller;
 use App\Core\Request;
 use App\Services\AI\AiEngineService;
 use App\Services\AI\AiExecutionService;
 use App\Services\AI\AiOperationalContextService;
+use App\Services\AI\AiScopedOperationalContextService;
 use App\Services\Auth\CsrfService;
 
 class AiEngineController extends Controller
@@ -17,6 +19,8 @@ class AiEngineController extends Controller
         private AiEngineService $engine,
         private AiExecutionService $execution,
         private AiOperationalContextService $operationalContext,
+        private AiScopedOperationalContextService $scopedContext,
+        private StoreRepository $stores,
         private CsrfService $csrf
     ) {
         parent::__construct();
@@ -176,6 +180,86 @@ class AiEngineController extends Controller
 
             return null;
         }
+    }
+
+
+    public function scopedContext(
+        Request $request
+    ) {
+        $agentId = (int) $request->route(
+            'agent_id'
+        );
+
+        $storeId = (int) (
+            $this->request->input(
+                'store_id'
+            ) ?? 0
+        );
+
+        $dateFrom = trim(
+            (string) (
+                $this->request->input(
+                    'date_from'
+                ) ?? date('Y-m-01')
+            )
+        );
+
+        $dateTo = trim(
+            (string) (
+                $this->request->input(
+                    'date_to'
+                ) ?? date('Y-m-d')
+            )
+        );
+
+        $preview = null;
+        $error = null;
+
+        if ($storeId > 0) {
+            try {
+                $preview =
+                    $this->scopedContext
+                        ->previewForOperator(
+                            $agentId,
+                            current_user_id(),
+                            $storeId,
+                            $dateFrom,
+                            $dateTo
+                        );
+            } catch (\Throwable $exception) {
+                $error =
+                    $exception->getMessage()
+                    ?: 'Unable to build scoped AI context.';
+            }
+        }
+
+        try {
+            $agent =
+                $this->engine->agent(
+                    $agentId
+                );
+        } catch (\Throwable $exception) {
+            http_response_code(404);
+
+            return '404 - AI agent not found';
+        }
+
+        return $this->view(
+            'admin.ai.scoped-context',
+            [
+                'title' =>
+                    'Scoped AI Operational Context',
+                'agent' => $agent,
+                'stores' => $this->stores->all(),
+                'selected_store_id' =>
+                    $storeId,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'preview' => $preview,
+                'error' => $error,
+            ],
+            'admin'
+        );
     }
 
 }
