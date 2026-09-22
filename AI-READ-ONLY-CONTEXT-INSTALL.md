@@ -416,3 +416,31 @@ Observed:
 
 This proves archived agents cannot access the bounded operational
 snapshot and the rejected request creates no provider run.
+
+
+Acceptance F - ONE LIVE READ-ONLY ANALYSIS: PASSED
+
+Observed in Mission Control:
+- Run #6 succeeded for Alasne Operations Assistant
+- provider = openai; model = gpt-5.6-terra
+- response was grounded in operational snapshot values
+- reporting period shown = September 1-22, 2026
+- paid orders = 7; revenue = $482.38
+- open returns = 1; tracking gaps = 0
+- open fulfillment exceptions = 0; low-stock products = none shown
+- response did not claim to change Alasne data or take external action
+- response text was displayed for the current session only
+
+Verified ai_runs row #6:
+- agent_id = 1; status = succeeded
+- context_type = mission_control_operational_snapshot_v1
+- context_sha256 = 12e3395f7462459dbdc8b739966a05d30251a8498a910c4c2e3358891e4fe28d
+- context_length = 5423
+- input_tokens = 1657; output_tokens = 77; total_tokens = 1734
+- latency_ms = 4748
+- error_code = NULL; error_message = NULL
+
+Note: This live-run snapshot hash differs from the earlier preview hash;
+the snapshot is rebuilt from current operational data for each run.
+Acceptance G (absence of persisted context body) and H (final disable
+guard) remain pending separate verification.
