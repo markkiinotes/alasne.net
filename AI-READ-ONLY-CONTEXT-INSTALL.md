@@ -444,3 +444,51 @@ Note: This live-run snapshot hash differs from the earlier preview hash;
 the snapshot is rebuilt from current operational data for each run.
 Acceptance G (absence of persisted context body) and H (final disable
 guard) remain pending separate verification.
+
+
+Acceptance G - CONTEXT BODY NOT PERSISTED: PASSED
+
+Verified ai_runs schema:
+- FORBIDDEN PERSISTED COLUMNS: NONE
+- no context_json, context_text, snapshot_json, snapshot_text,
+  prompt_text, response_text, or api_key columns
+
+The ai_runs table retains metadata-only context type, SHA-256 hash,
+and length rather than dedicated snapshot-body columns.
+
+Acceptance H - RETURN TO SAFE STATE: PASSED
+
+Verified platform settings:
+- ai.enabled = 0
+- ai.manual_execution_only = 1
+- ai.model = gpt-5.6-terra
+- AI RUN COUNT = 6
+
+Observed on /admin/ai:
+- AI Engine = Disabled
+- Manual Execution = Locked
+- Credential Presence = Configured
+- Manual-Only Guardrail = Required
+- Configuration Readiness = Not Ready
+
+The authorized context preview was previously accepted with AI disabled.
+The final safety check confirms live execution is locked again and no
+additional provider run was created after Run #6.
+
+AI READ-ONLY OPERATIONAL CONTEXT ACCEPTANCE: PASSED
+
+Accepted paths:
+- code, migration, and staging gate
+- metadata-only context audit schema
+- per-agent versioned operational_snapshot capability
+- bounded snapshot preview without provider calls
+- prohibited customer/contact field-key exclusion
+- archived-agent context guard
+- one successful live read-only operational analysis
+- no dedicated persisted prompt, response, or snapshot-body columns
+- return to globally disabled, manual-only safety state
+
+No model SQL execution, mutation tools, scheduled runs, autonomous loops,
+or customer/supplier/order actions were added.
+
+Branch remains unmerged pending explicit authorization.
