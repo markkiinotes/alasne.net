@@ -240,6 +240,7 @@ class AiScopedOperationalContextService
               AND created_at < DATE_ADD(:date_to, INTERVAL 1 DAY)
             GROUP BY status
             ORDER BY status
+            LIMIT 10
         ");
         $stmt->execute($this->periodParams($storeId, $from, $to));
 
