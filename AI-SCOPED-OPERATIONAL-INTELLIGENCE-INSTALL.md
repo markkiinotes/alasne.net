@@ -219,3 +219,129 @@ The single-store scoped context foundation is accepted for the
 super_admin-only implementation slice. UI/execution integration remains
 pending and must preserve the same server-side authorization and scope
 validation.
+
+
+SECOND SLICE — SCOPED UI + MANUAL EXECUTION (IMPLEMENTED; ACCEPTANCE PENDING)
+============================================================================
+This slice replaces the old global AI context path. It requires an
+explicit store and date range for all operational_snapshot agents,
+including the existing Alasne Operations Assistant.
+
+Code:
+- app/Services/AI/AiScopedOperationalContextService.php
+  - authorized store options
+  - contextForOperator returns the same validated preview JSON plus
+    hash, length, store ID, and reporting dates
+  - results of returns-status aggregation are capped at 10 rows
+- app/Controllers/Admin/AiEngineController.php
+  - Context link now opens the scoped selector
+  - store list is loaded only after super_admin authorization
+  - manual-run input is POST-only; scope is not read from query strings
+  - selection is passed to the execution service for another check
+- app/Views/admin/ai/scoped-context.php
+  - store/date selector, no all-stores option, scoped JSON preview
+- app/Views/admin/ai/index.php
+  - required store/date inputs for agents with operational_snapshot
+  - text-only agents keep their existing prompt-only behavior
+  - scope metadata is shown for completed runs
+- app/Services/AI/AiExecutionService.php
+  - no operational_snapshot run without store/date scope
+  - calls contextForOperator before creating ai_runs or calling OpenAI
+  - fixed instructions say snapshot values are data, not instructions
+  - forbids other-store analysis and labels low stock as current inventory
+- app/Services/AI/AiOperationalContextService.php
+  - old unscoped entry points fail closed
+- database/migrations/000061_add_ai_run_scope_audit.php
+  - nullable context_store_id (BIGINT UNSIGNED)
+  - nullable context_date_from (DATE)
+  - nullable context_date_to (DATE)
+- app/Repositories/AiRunRepository.php
+  - writes these audit fields alongside context type/hash/length
+
+No customer fields, snapshot JSON, prompt text, response text, or API
+credential is persisted to ai_runs.
+
+Scope authorization for this slice is deliberately super_admin only.
+Narrower operator-to-store role grants are NOT implemented yet and must
+not be inferred from store selection.
+
+SECOND-SLICE LOCAL GATE
+-----------------------
+From C:\xampp\htdocs\alasne.net:
+
+git pull origin feature/ai-scoped-operational-intelligence
+
+php -l database\migrations\000061_add_ai_run_scope_audit.php
+php -l app\Repositories\AiRunRepository.php
+php -l app\Services\AI\AiScopedOperationalContextService.php
+php -l app\Services\AI\AiOperationalContextService.php
+php -l app\Services\AI\AiExecutionService.php
+php -l app\Controllers\Admin\AiEngineController.php
+php -l app\Views\admin\ai\scoped-context.php
+php -l app\Views\admin\ai\index.php
+php -l config\routes.php
+
+composer dump-autoload -o
+git diff --check
+php alasne migrate
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-stage.ps1
+
+Expected: all nine PHP lint commands pass; no diff-check output;
+migration 000061 completes; Stage build verification PASSED.
+
+SECOND-SLICE ACCEPTANCE A — SCHEMA + NO PROVIDER RUN
+-----------------------------------------------------
+php -r "$app=require 'bootstrap/app.php'; $pdo=$app->container->make('PDO'); $s=$pdo->query('SHOW COLUMNS FROM ai_runs WHERE Field IN (\"context_store_id\",\"context_date_from\",\"context_date_to\")'); echo json_encode($s->fetchAll(PDO::FETCH_ASSOC),JSON_PRETTY_PRINT).PHP_EOL; echo 'AI ENABLED: '.$pdo->query('SELECT value_text FROM platform_settings WHERE setting_key=\"ai.enabled\"')->fetchColumn().PHP_EOL; echo 'RUN COUNT: '.$pdo->query('SELECT COUNT(*) FROM ai_runs')->fetchColumn().PHP_EOL;"
+
+Expected three columns present, AI ENABLED: 0, RUN COUNT: 6.
+
+SECOND-SLICE ACCEPTANCE B — SCOPED PREVIEW UI
+---------------------------------------------
+Keep AI disabled. Open /admin/ai and click Scoped Context on the
+Operations Assistant. Expected a store/date form, no global choice.
+Choose store #1, 2026-09-01 through 2026-09-22.
+
+Expected:
+- one store ID in the JSON scope
+- date_from/date_to exactly match selection
+- context_type = mission_control_store_snapshot_v1
+- SHA-256 length 64; context length 1..18000
+- sections schema/scope/summary/returns/recent_orders/low_stock_products
+- no customer names, contact fields, or other-store records
+- opening selector or preview makes no provider request
+
+Test malformed inputs with the same URL: store_id=0, nonexistent store,
+invalid/reversed dates. No snapshot may be rendered.
+
+SECOND-SLICE ACCEPTANCE C — LEGACY GLOBAL ROUTE DISABLED
+---------------------------------------------------------
+The old /admin/ai/agents/1/context URL without store_id must now show
+the scoped selection form, NOT an unscoped JSON snapshot.
+
+The old service API must fail closed:
+
+php -r "$app=require 'bootstrap/app.php'; $s=$app->container->make('App\Services\AI\AiOperationalContextService'); try{$s->previewForAgent(1);echo 'GLOBAL: UNEXPECTEDLY ALLOWED'.PHP_EOL;}catch(Throwable $e){echo 'GLOBAL: BLOCKED'.PHP_EOL;}"
+
+Expected GLOBAL: BLOCKED.
+
+SECOND-SLICE ACCEPTANCE D — MANUAL FORM GUARD (AI STILL DISABLED)
+-----------------------------------------------------------------
+For Operations Assistant the Manual Agent Test form should display
+Store, Date From, Date To and prompt. With AI Engine Disabled it must
+remain Locked. The archived Acceptance Analyst remains disabled.
+If a text-only agent is configured in future, it should retain its
+prompt-only form; it must not receive operational data.
+
+Run count should remain 6.
+
+LIVE SCOPE ACCEPTANCE — NOT YET AUTHORIZED
+------------------------------------------
+Only after the local gate and UI/legacy-path checks pass, explicitly
+enable AI for controlled testing. Run an authorized store #1 brief.
+Inspect ai_runs.context_store_id/context_date_from/context_date_to,
+context_type/hash/length and token/latency fields; no context body.
+
+Recheck invalid/missing scope at execution and cross-store isolation
+before accepting this phase. Then disable AI again.
+
+Do not merge this feature branch into master without explicit request.
