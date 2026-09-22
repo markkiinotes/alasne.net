@@ -108,3 +108,34 @@ Operator verified:
 
 No migration or provider call was required for this foundation gate.
 Acceptance A-C remain pending local runtime verification.
+
+
+ACCEPTANCE A — VALID SCOPED SNAPSHOT: PASSED
+--------------------------------------------
+Runtime preview for agent 1, operator 1, store 1:
+- type = mission_control_store_snapshot_v1
+- store_id = 1
+- reporting period = 2026-09-01 through 2026-09-22
+- context length = 2557 characters (under 18000)
+- SHA-256 length = 64
+- sections = schema, scope, summary, returns, recent_orders,
+  low_stock_products
+
+ACCEPTANCE B — FAIL-CLOSED GUARDS: PASSED
+-----------------------------------------
+All six probes were blocked:
+- unauthenticated operator
+- all-stores / store ID 0
+- nonexistent store
+- invalid date
+- reversed date range
+- archived agent
+
+ACCEPTANCE C — NO AI EXECUTION: PASSED
+--------------------------------------
+ai.enabled = 0
+AI RUN COUNT = 6
+The isolated scoped service did not create provider runs.
+
+The first scoped foundation is accepted. UI and provider execution
+integration remain pending. No master merge was performed.
