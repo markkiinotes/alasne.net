@@ -345,3 +345,24 @@ Recheck invalid/missing scope at execution and cross-store isolation
 before accepting this phase. Then disable AI again.
 
 Do not merge this feature branch into master without explicit request.
+
+
+SECOND-SLICE LOCAL GATE — PASSED (2026-09-22)
+---------------------------------------------
+Operator verified on local XAMPP:
+- feature branch fast-forwarded to c6700cbbadcf97b78a742aae13ce5b8d2ed7c3e4
+- nine PHP lint commands: no syntax errors
+- Composer optimized autoload: 729 classes
+- git diff --check: no output
+- migration 000061_add_ai_run_scope_audit.php: complete
+- staging build: PASSED; no failed or mismatched files
+- stage-specific .env, vendor and storage preserved
+- ai_runs.context_store_id: nullable BIGINT UNSIGNED
+- ai_runs.context_date_from/context_date_to: nullable DATE
+- AI enabled: 0; AI run count: 6
+- Mission Control manual form displays store/date selectors and remains locked
+- /admin/ai/agents/1/context displays scoped form without global snapshot
+
+Scoped preview with a selected store, invalid-input guard, and legacy
+service block remain pending behavioral acceptance. No live API call
+is authorized at this gate.
