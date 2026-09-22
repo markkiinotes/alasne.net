@@ -648,12 +648,14 @@ $executionAvailable =
                                             true
                                         )
                                     ): ?>
-                                        <a
-                                            href="/admin/ai/agents/<?= (int) $agent['id'] ?>/context"
-                                            class="ai-button secondary"
-                                        >
-                                            Context
-                                        </a>
+                                        <?php if (! empty($scope_authorized)): ?>
+                                            <a
+                                                href="/admin/ai/agents/<?= (int) $agent['id'] ?>/context"
+                                                class="ai-button secondary"
+                                            >
+                                                Scoped Context
+                                            </a>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -706,6 +708,12 @@ $executionAvailable =
             >
                 <?php foreach ($agents as $agent): ?>
                     <?php
+                    $needsContext = in_array(
+                        'operational_snapshot',
+                        $agent['capabilities'],
+                        true
+                    );
+
                     $canPrompt =
                         in_array(
                             'manual_prompting',
@@ -716,6 +724,10 @@ $executionAvailable =
                             $agent['status'],
                             ['draft', 'active'],
                             true
+                        )
+                        && (
+                            ! $needsContext
+                            || (! empty($scope_authorized) && ! empty($scope_stores))
                         );
                     ?>
 
@@ -745,6 +757,45 @@ $executionAvailable =
                                     $csrf_token
                                 ) ?>"
                             >
+
+                            <?php if ($needsContext): ?>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:15px;">
+                                    <label style="display:grid;gap:6px;font-weight:700;">
+                                        Store
+                                        <select name="store_id" required style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;"
+                                            <?= ! $canPrompt ? 'disabled' : '' ?>>
+                                            <option value="">Select one store</option>
+                                            <?php foreach (($scope_stores ?? []) as $store): ?>
+                                                <option
+                                                    value="<?= (int) $store['id'] ?>"
+                                                    <?= (string) ($old_scope['store_id'] ?? '') === (string) $store['id'] ? 'selected' : '' ?>
+                                                ><?= $escape($store['name']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </label>
+                                    <label style="display:grid;gap:6px;font-weight:700;">
+                                        Date From
+                                        <input type="date" name="date_from" required
+                                            value="<?= $escape($old_scope['date_from'] ?? date('Y-m-01')) ?>"
+                                            style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;"
+                                            <?= ! $canPrompt ? 'disabled' : '' ?>>
+                                    </label>
+                                    <label style="display:grid;gap:6px;font-weight:700;">
+                                        Date To
+                                        <input type="date" name="date_to" required
+                                            value="<?= $escape($old_scope['date_to'] ?? date('Y-m-d')) ?>"
+                                            style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:8px;"
+                                            <?= ! $canPrompt ? 'disabled' : '' ?>>
+                                    </label>
+                                </div>
+                                <p class="ai-muted" style="margin:0 0 12px;">
+                                    Only the selected store is included. Alasne checks the scope again before execution.
+                                    Low-stock inventory reflects current stock.
+                                </p>
+                                <?php if (empty($scope_authorized)): ?>
+                                    <div class="ai-notice">Store-scoped analysis requires an authorized platform operator.</div>
+                                <?php endif; ?>
+                            <?php endif; ?>
 
                             <textarea
                                 name="prompt"
@@ -880,6 +931,14 @@ $executionAvailable =
                         </span>
                     <?php endif; ?>
 
+                    <?php if (! empty($last_result['context_store_id'])): ?>
+                        <span>
+                            Store #<?= (int) $last_result['context_store_id'] ?> ·
+                            <?= $escape($last_result['context_date_from'] ?? '') ?> to
+                            <?= $escape($last_result['context_date_to'] ?? '') ?>
+                        </span>
+                    <?php endif; ?>
+
                     <span>
                         <?= $escape(
                             $last_result[
@@ -1008,6 +1067,12 @@ $executionAvailable =
                                             ] ?? 0
                                         ) ?>
                                         chars
+                                        <?php if (! empty($run['context_store_id'])): ?>
+                                            <br>
+                                            Store #<?= (int) $run['context_store_id'] ?><br>
+                                            <?= $escape($run['context_date_from'] ?? '') ?> to
+                                            <?= $escape($run['context_date_to'] ?? '') ?>
+                                        <?php endif; ?>
                                     </span>
                                 <?php else: ?>
                                     —
