@@ -96,7 +96,16 @@ class AiEngineController extends Controller
         }
 
         $_SESSION['ai_old_prompt'] = $prompt;
-        $_SESSION['ai_old_scope'] = $scope ?? [];
+        $_SESSION['ai_old_scope'] = [];
+
+        if ($scope !== null) {
+            foreach (['store_id', 'date_from', 'date_to'] as $field) {
+                $_SESSION['ai_old_scope'][$field] =
+                    is_string($scope[$field] ?? null)
+                        ? $scope[$field]
+                        : '';
+            }
+        }
 
         if (! $this->csrf->validate(
             (string) ($_POST['_csrf_token'] ?? '')
@@ -183,12 +192,12 @@ class AiEngineController extends Controller
         }
 
         $rawStoreId = $_GET['store_id'] ?? null;
-        $dateFrom = is_string($_GET['date_from'] ?? null)
-            ? trim($_GET['date_from'])
-            : date('Y-m-01');
-        $dateTo = is_string($_GET['date_to'] ?? null)
-            ? trim($_GET['date_to'])
-            : date('Y-m-d');
+        $dateFrom = ! array_key_exists('date_from', $_GET)
+            ? date('Y-m-01')
+            : (is_string($_GET['date_from']) ? trim($_GET['date_from']) : '');
+        $dateTo = ! array_key_exists('date_to', $_GET)
+            ? date('Y-m-d')
+            : (is_string($_GET['date_to']) ? trim($_GET['date_to']) : '');
 
         $selectedStoreId = is_scalar($rawStoreId)
             ? (string) $rawStoreId
