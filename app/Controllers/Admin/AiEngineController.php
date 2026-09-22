@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
-use App\Repositories\AiAgentRepository;
-use App\Repositories\StoreRepository;
 use App\Core\Controller;
 use App\Core\Request;
+use App\Repositories\AiAgentRepository;
 use App\Services\AI\AiEngineService;
 use App\Services\AI\AiExecutionService;
-use App\Services\AI\AiOperationalContextService;
 use App\Services\AI\AiScopedOperationalContextService;
 use App\Services\Auth\CsrfService;
 
@@ -19,10 +17,8 @@ class AiEngineController extends Controller
     public function __construct(
         private AiEngineService $engine,
         private AiExecutionService $execution,
-        private AiOperationalContextService $operationalContext,
         private AiScopedOperationalContextService $scopedContext,
         private AiAgentRepository $agents,
-        private StoreRepository $stores,
         private CsrfService $csrf
     ) {
         parent::__construct();
@@ -30,49 +26,48 @@ class AiEngineController extends Controller
 
     public function index()
     {
-        $success =
-            $_SESSION['ai_success'] ?? null;
-
-        $error =
-            $_SESSION['ai_error'] ?? null;
-
-        $lastResult =
-            $_SESSION['ai_last_result'] ?? null;
-
-        $oldPrompt =
-            $_SESSION['ai_old_prompt'] ?? '';
+        $success = $_SESSION['ai_success'] ?? null;
+        $error = $_SESSION['ai_error'] ?? null;
+        $lastResult = $_SESSION['ai_last_result'] ?? null;
+        $oldPrompt = $_SESSION['ai_old_prompt'] ?? '';
+        $oldScope = $_SESSION['ai_old_scope'] ?? [];
 
         unset(
             $_SESSION['ai_success'],
             $_SESSION['ai_error'],
             $_SESSION['ai_last_result'],
-            $_SESSION['ai_old_prompt']
+            $_SESSION['ai_old_prompt'],
+            $_SESSION['ai_old_scope']
         );
+
+        // Never use the unrestricted StoreRepository here. An operator
+        // sees store choices only after the scoped service authorizes them.
+        $stores = [];
+        $scopeAuthorized = false;
+
+        try {
+            $stores = $this->scopedContext->storesForOperator(
+                (int) (current_user_id() ?? 0)
+            );
+            $scopeAuthorized = true;
+        } catch (\Throwable $exception) {
+            // Non-super-admins can use permitted text-only agents but
+            // receive no store list or scoped operational context.
+        }
 
         return $this->view(
             'admin.ai.index',
             [
                 'title' => 'AI Engine',
-                'dashboard' =>
-                    $this->engine->dashboard(),
-                'csrf_token' =>
-                    $this->csrf->token(),
-                'success' =>
-                    is_string($success)
-                        ? $success
-                        : null,
-                'error' =>
-                    is_string($error)
-                        ? $error
-                        : null,
-                'last_result' =>
-                    is_array($lastResult)
-                        ? $lastResult
-                        : null,
-                'old_prompt' =>
-                    is_string($oldPrompt)
-                        ? $oldPrompt
-                        : '',
+                'dashboard' => $this->engine->dashboard(),
+                'csrf_token' => $this->csrf->token(),
+                'success' => is_string($success) ? $success : null,
+                'error' => is_string($error) ? $error : null,
+                'last_result' => is_array($lastResult) ? $lastResult : null,
+                'old_prompt' => is_string($oldPrompt) ? $oldPrompt : '',
+                'old_scope' => is_array($oldScope) ? $oldScope : [],
+                'scope_stores' => $stores,
+                'scope_authorized' => $scopeAuthorized,
             ],
             'admin'
         );
@@ -80,59 +75,62 @@ class AiEngineController extends Controller
 
     public function run(Request $request)
     {
-        $agentId = (int) $request->route(
-            'agent_id'
-        );
+        $agentId = (int) $request->route('agent_id');
 
-        $prompt = trim(
-            (string) $this->request->input(
-                'prompt'
-            )
-        );
+        // POST-only input: never accept query parameters as run scope.
+        $prompt = is_string($_POST['prompt'] ?? null)
+            ? trim($_POST['prompt'])
+            : '';
 
-        $_SESSION['ai_old_prompt'] =
-            $prompt;
+        $scope = null;
 
-        if (
-            ! $this->csrf->validate(
-                (string) $this->request->input(
-                    '_csrf_token'
-                )
-            )
+        if (array_key_exists('store_id', $_POST)
+            || array_key_exists('date_from', $_POST)
+            || array_key_exists('date_to', $_POST)
         ) {
+            $scope = [
+                'store_id' => $_POST['store_id'] ?? null,
+                'date_from' => $_POST['date_from'] ?? null,
+                'date_to' => $_POST['date_to'] ?? null,
+            ];
+        }
+
+        $_SESSION['ai_old_prompt'] = $prompt;
+        $_SESSION['ai_old_scope'] = $scope ?? [];
+
+        if (! $this->csrf->validate(
+            (string) ($_POST['_csrf_token'] ?? '')
+        )) {
             $_SESSION['ai_error'] =
                 'Security token expired. Please try again.';
 
-            $this->response->redirect(
-                '/admin/ai#manual-execution'
-            );
+            $this->response->redirect('/admin/ai#manual-execution');
 
             return null;
         }
 
         try {
-            $result =
-                $this->execution->execute(
-                    $agentId,
-                    $prompt,
-                    current_user_id()
-                );
+            $result = $this->execution->execute(
+                $agentId,
+                $prompt,
+                current_user_id(),
+                $scope
+            );
 
             $this->csrf->regenerate();
 
-            unset($_SESSION['ai_old_prompt']);
+            unset(
+                $_SESSION['ai_old_prompt'],
+                $_SESSION['ai_old_scope']
+            );
 
-            $_SESSION['ai_last_result'] =
-                $result;
-
+            $_SESSION['ai_last_result'] = $result;
             $_SESSION['ai_success'] =
                 'Manual AI run #'
                 . (int) $result['run_id']
                 . ' completed successfully.';
 
-            $this->response->redirect(
-                '/admin/ai#manual-execution'
-            );
+            $this->response->redirect('/admin/ai#manual-execution');
 
             return null;
         } catch (\Throwable $exception) {
@@ -140,121 +138,97 @@ class AiEngineController extends Controller
                 $exception->getMessage()
                 ?: 'Unable to complete the AI run.';
 
-            $this->response->redirect(
-                '/admin/ai#manual-execution'
-            );
+            $this->response->redirect('/admin/ai#manual-execution');
 
             return null;
         }
     }
 
-    public function contextPreview(
-        Request $request
-    ) {
-        $agentId = (int) $request->route(
-            'agent_id'
+    public function contextPreview(Request $request)
+    {
+        $agentId = (int) $request->route('agent_id');
+        $operatorId = (int) (current_user_id() ?? 0);
+
+        $agent = $this->agents->find($agentId);
+
+        if (! $agent) {
+            http_response_code(404);
+            return '404 - AI agent not found';
+        }
+
+        $capabilities = json_decode(
+            (string) ($agent['capabilities_json'] ?? '[]'),
+            true
         );
+
+        if (! in_array((string) $agent['status'], ['draft', 'active'], true)
+            || ! is_array($capabilities)
+            || ! in_array('operational_snapshot', $capabilities, true)
+        ) {
+            $_SESSION['ai_error'] =
+                'This AI agent cannot receive operational context.';
+
+            $this->response->redirect('/admin/ai');
+            return null;
+        }
 
         try {
-            $preview =
-                $this->operationalContext
-                    ->previewForAgent(
-                        $agentId
-                    );
-
-            return $this->view(
-                'admin.ai.context-preview',
-                [
-                    'title' =>
-                        'AI Operational Context',
-                    'preview' => $preview,
-                ],
-                'admin'
-            );
+            $stores = $this->scopedContext->storesForOperator($operatorId);
         } catch (\Throwable $exception) {
             $_SESSION['ai_error'] =
-                $exception->getMessage()
-                ?: 'Unable to build AI operational context.';
+                'The operator is not authorized for scoped AI reporting.';
 
-            $this->response->redirect(
-                '/admin/ai'
-            );
-
+            $this->response->redirect('/admin/ai');
             return null;
         }
-    }
 
+        $rawStoreId = $_GET['store_id'] ?? null;
+        $dateFrom = is_string($_GET['date_from'] ?? null)
+            ? trim($_GET['date_from'])
+            : date('Y-m-01');
+        $dateTo = is_string($_GET['date_to'] ?? null)
+            ? trim($_GET['date_to'])
+            : date('Y-m-d');
 
-    public function scopedContext(
-        Request $request
-    ) {
-        $agentId = (int) $request->route(
-            'agent_id'
-        );
-
-        $storeId = (int) (
-            $this->request->input(
-                'store_id'
-            ) ?? 0
-        );
-
-        $dateFrom = trim(
-            (string) (
-                $this->request->input(
-                    'date_from'
-                ) ?? date('Y-m-01')
-            )
-        );
-
-        $dateTo = trim(
-            (string) (
-                $this->request->input(
-                    'date_to'
-                ) ?? date('Y-m-d')
-            )
-        );
+        $selectedStoreId = is_scalar($rawStoreId)
+            ? (string) $rawStoreId
+            : '';
 
         $preview = null;
         $error = null;
 
-        if ($storeId > 0) {
-            try {
-                $preview =
-                    $this->scopedContext
-                        ->previewForOperator(
-                            $agentId,
-                            current_user_id(),
-                            $storeId,
-                            $dateFrom,
-                            $dateTo
-                        );
-            } catch (\Throwable $exception) {
-                $error =
-                    $exception->getMessage()
-                    ?: 'Unable to build scoped AI context.';
-            }
-        }
-
-        $agent =
-            $this->agents->find(
-                $agentId
+        if (array_key_exists('store_id', $_GET)) {
+            $storeId = filter_var(
+                $rawStoreId,
+                FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1]]
             );
 
-        if (! $agent) {
-            http_response_code(404);
-
-            return '404 - AI agent not found';
+            if ($storeId === false) {
+                $error = 'Select one valid store before building AI context.';
+            } else {
+                try {
+                    $preview = $this->scopedContext->previewForOperator(
+                        $agentId,
+                        $operatorId,
+                        (int) $storeId,
+                        $dateFrom,
+                        $dateTo
+                    );
+                } catch (\Throwable $exception) {
+                    $error = $exception->getMessage()
+                        ?: 'Unable to build scoped AI context.';
+                }
+            }
         }
 
         return $this->view(
             'admin.ai.scoped-context',
             [
-                'title' =>
-                    'Scoped AI Operational Context',
+                'title' => 'Scoped AI Operational Context',
                 'agent' => $agent,
-                'stores' => $this->stores->all(),
-                'selected_store_id' =>
-                    $storeId,
+                'stores' => $stores,
+                'selected_store_id' => $selectedStoreId,
                 'date_from' => $dateFrom,
                 'date_to' => $dateTo,
                 'preview' => $preview,
@@ -263,5 +237,4 @@ class AiEngineController extends Controller
             'admin'
         );
     }
-
 }
