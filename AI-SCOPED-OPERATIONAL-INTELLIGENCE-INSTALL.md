@@ -179,3 +179,43 @@ Verified:
 
 The scoped foundation produced no provider request and did not modify
 the accepted AI execution state.
+
+
+ACCEPTANCE A - VALID SCOPED PREVIEW: PASSED
+-------------------------------------------
+Observed:
+- context type = mission_control_store_snapshot_v1
+- store_id = 1
+- reporting period = 2026-09-01 to 2026-09-22
+- context length = 2557
+- SHA-256 length = 64
+- sections = schema, scope, summary, returns, recent_orders, low_stock_products
+
+The scoped snapshot stayed below the configured 18,000-character limit.
+
+ACCEPTANCE B - FAIL-CLOSED GUARDS: PASSED
+-----------------------------------------
+All tested invalid/unauthorized cases were blocked:
+- unauthenticated operator
+- all-stores / store_id 0
+- missing store
+- invalid date
+- reversed reporting period
+- archived agent
+
+No invalid case returned UNEXPECTEDLY ALLOWED.
+
+ACCEPTANCE C - NO AI EXECUTION: PASSED
+--------------------------------------
+Verified:
+- ai.enabled = 0
+- ai_runs count = 6
+
+The scoped preview/guard tests created no provider run.
+
+SCOPED FOUNDATION ACCEPTANCE: PASSED
+
+The single-store scoped context foundation is accepted for the
+super_admin-only implementation slice. UI/execution integration remains
+pending and must preserve the same server-side authorization and scope
+validation.
