@@ -102,6 +102,63 @@ class AiScopedOperationalContextService
         ];
     }
 
+    /**
+     * A store option is not an authorization grant: this list is available
+     * only after the same platform-operator authorization used for context.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function storesForOperator(int $operatorId): array
+    {
+        $this->assertPlatformOperator($operatorId);
+
+        $stmt = $this->db->query("
+            SELECT id, name
+            FROM stores
+            ORDER BY name ASC, id ASC
+        ");
+
+        return array_map(
+            static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'name' => mb_substr((string) $row['name'], 0, 255),
+            ],
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
+        );
+    }
+
+    /**
+     * @return array{
+     *     type:string,text:string,sha256:string,length:int,
+     *     store_id:int,date_from:string,date_to:string
+     * }
+     */
+    public function contextForOperator(
+        int $agentId,
+        int $operatorId,
+        int $storeId,
+        string $dateFrom,
+        string $dateTo
+    ): array {
+        $preview = $this->previewForOperator(
+            $agentId,
+            $operatorId,
+            $storeId,
+            $dateFrom,
+            $dateTo
+        );
+
+        return [
+            'type' => (string) $preview['context_type'],
+            'text' => (string) $preview['json'],
+            'sha256' => (string) $preview['sha256'],
+            'length' => (int) $preview['length'],
+            'store_id' => (int) $preview['store_id'],
+            'date_from' => (string) $preview['date_from'],
+            'date_to' => (string) $preview['date_to'],
+        ];
+    }
+
     private function assertPlatformOperator(int $operatorId): void
     {
         if ($operatorId < 1) {
