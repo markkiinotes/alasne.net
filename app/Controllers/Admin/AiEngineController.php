@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers\Admin;
 
+use App\Repositories\AiAgentRepository;
 use App\Repositories\StoreRepository;
 use App\Core\Controller;
 use App\Core\Request;
@@ -20,6 +21,7 @@ class AiEngineController extends Controller
         private AiExecutionService $execution,
         private AiOperationalContextService $operationalContext,
         private AiScopedOperationalContextService $scopedContext,
+        private AiAgentRepository $agents,
         private StoreRepository $stores,
         private CsrfService $csrf
     ) {
@@ -233,12 +235,12 @@ class AiEngineController extends Controller
             }
         }
 
-        try {
-            $agent =
-                $this->engine->agent(
-                    $agentId
-                );
-        } catch (\Throwable $exception) {
+        $agent =
+            $this->agents->find(
+                $agentId
+            );
+
+        if (! $agent) {
             http_response_code(404);
 
             return '404 - AI agent not found';
